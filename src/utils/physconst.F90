@@ -699,7 +699,7 @@ end subroutine physconst_init
     call get_molecular_diff_coef(1,ncol,1,1,pver,pver,t(:ncol,:),1,sponge_factor,kmvis(:ncol,:,lchnk), &
        kmcnd(:ncol,:,lchnk), pcnst, tracer=mmr(:ncol,:,:), fact=to_moist_fact(:ncol,:),                &
        active_species_idx_dycore=thermodynamic_active_species_idx)
-
+    cappav(:ncol,:,lchnk) = rairv(:ncol,:,lchnk)/cpairv(:ncol,:,lchnk)
   end subroutine physconst_update
   !
   !****************************************************************************************************************
@@ -1321,9 +1321,9 @@ end subroutine physconst_init
        mbarv = mwdry
      else
        if (present(fact)) then
-         factor = fact(:,:,:)
+         factor(i0:i1,j0:j1,k0:k1) = fact(i0:i1,j0:j1,k0:k1)         
        else
-         factor = 1.0_r8
+         factor(i0:i1,j0:j1,k0:k1) = 1.0_r8         
        endif       
 
        mbarv = 0.0_r8
@@ -1816,7 +1816,34 @@ end subroutine physconst_init
              kmcnd(i,j,k1+1) = kmcnd(i,j,k1)
            end do
          end do
-       else if (get_at_interfaces==0) then 
+       else if (get_at_interfaces==0) then
+         do k=1,k1
+           do j=j0,j1
+             do i=i0,i1
+               kmvis(i,j,k) = 0.0_r8
+               kmcnd(i,j,k) = 0.0_r8
+               residual = 1.0_r8
+               do icnst=1,dry_air_species_num-1
+                 ispecies = idx_local(icnst)
+                 mm       = tracer(i,j,k,ispecies)*factor(i,j,k)
+                 kmvis(i,j,k) = kmvis(i,j,k)+thermodynamic_active_species_kv(icnst)* &
+                                thermodynamic_active_species_mwi(icnst)*mm
+                 kmcnd(i,j,k) = kmcnd(i,j,k)+thermodynamic_active_species_kc(icnst)* &
+                                thermodynamic_active_species_mwi(icnst)*mm
+                 residual     = residual - mm
+               end do
+               icnst=dry_air_species_num
+               ispecies = idx_local(icnst)
+               kmvis(i,j,k) = kmvis(i,j,k)+thermodynamic_active_species_kv(icnst)* &
+                              thermodynamic_active_species_mwi(icnst)*residual
+               kmcnd(i,j,k) = kmcnd(i,j,k)+thermodynamic_active_species_kc(icnst)* &
+                              thermodynamic_active_species_mwi(icnst)*residual
+               
+               kmvis(i,j,k) = kmvis(i,j,k)*mbarv(i,j,k)*temp(i,j,k)**kv4*1.e-7_r8
+               kmcnd(i,j,k) = kmcnd(i,j,k)*mbarv(i,j,k)*temp(i,j,k)**kc4*1.e-5_r8
+             enddo
+           enddo
+         end do
        else
          call endrun('get_molecular_diff_coef: get_at_interfaces must be 0 or 1')
        end if
