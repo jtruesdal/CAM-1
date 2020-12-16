@@ -1107,7 +1107,9 @@ contains
 
     if (nu < 0) then
       if (ne <= 0) then
-        if (hypervis_scaling/=0) then        
+        if (hypervis_power/=0) then
+          call endrun('ERROR: Automatic scaling of scalar viscosity not implemented')
+        else if (hypervis_scaling/=0) then
           nu_min = factor*nu_fac*(max_min_dx*1000.0_r8)**uniform_res_hypervis_scaling
           nu_max = factor*nu_fac*(min_min_dx*1000.0_r8)**uniform_res_hypervis_scaling
           nu     = factor*nu_min        
@@ -1119,8 +1121,6 @@ contains
           nu = nu_min*(2.0_r8*rearth/(3.0_r8*max_min_dx*1000.0_r8))**hypervis_scaling/(rearth**4)
           if (hybrid%masterthread) &
                write(iulog,'(a,a,a,e9.3)') "Nu_tensor",TRIM(str)," = ",nu
-        else if (hypervis_power/=0) then
-          call endrun('ERROR: Automatic scaling of scalar viscosity not implemented')
         end if
       else
         nu     = factor*nu_fac*((30.0_r8/ne)*110000.0_r8)**uniform_res_hypervis_scaling        
