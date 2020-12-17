@@ -208,7 +208,7 @@ contains
     use hybrid_mod,     only: hybrid_t, PrintHybrid
     use element_mod,    only: element_t
     use dimensions_mod, only: np,ne,nelem,nelemd,nc,nhe,qsize,ntrac,nlev,large_Courant_incr
-    use dimensions_mod, only: nu_scale_top,nu_div_lev,nu_lev
+    use dimensions_mod, only: nu_scale_top,nu_div_lev,nu_lev,nu_s_lev
 
     use quadrature_mod, only: gausslobatto, quadrature_t
     
@@ -255,7 +255,7 @@ contains
     real (kind=r8) :: dt_max_adv, dt_max_gw, dt_max_tracer_se, dt_max_tracer_fvm
     real (kind=r8) :: dt_max_hypervis, dt_max_hypervis_tracer, dt_max_laplacian_top
 
-    real(kind=r8) :: I_sphere
+    real(kind=r8) :: I_sphere, nu_max, nu_div_max
     real(kind=r8) :: h(np,np,nets:nete)
 
 
@@ -549,34 +549,47 @@ contains
 
     call automatically_set_viscosity_coefficients(hybrid,ne,max_min_dx,min_min_dx,nu_p  ,1.0_r8 ,'_p  ')
     call automatically_set_viscosity_coefficients(hybrid,ne,max_min_dx,min_min_dx,nu    ,0.5_r8,'    ') 
+    call automatically_set_viscosity_coefficients(hybrid,ne,max_min_dx,min_min_dx,nu_div,2.5_r8 ,'_div')     
+
+    if (nu_q<0) nu_q = nu_p ! necessary for consistency
+    if (nu_s<0) nu_s = nu_p ! temperature damping is always equal to nu_p
+
+    nu_div_lev(:) = nu_div
+    nu_lev(:)     = nu
+    nu_s_lev(:)   = nu_p
+    
     if (ptop>100.0_r8) then
       !
       ! CAM setting
       !
-      call automatically_set_viscosity_coefficients(hybrid,ne,max_min_dx,min_min_dx,nu_div,2.5_r8 ,'_div')     
-      nu_div_lev(:)     = nu_div
-      nu_lev(:)         = nu
-    else
-      !
-      ! WACCM setting
-      !
-      call automatically_set_viscosity_coefficients(hybrid,ne,max_min_dx,min_min_dx,nu_div,2.5_r8 ,'_div')
-      if (hybrid%masterthread) write(iulog,*) ": sponge layer viscosity scaling factor"
+      nu_div_max =  4.5_r8*nu_p
       do k=1,nlev
         press = pmid(k)
-        
-        scale1 = 0.5_r8*(1.0_r8+tanh(2.0_r8*log(100.0_r8/press)))
-        nu_div_lev(k)     = (1.0_r8-scale1)*nu_div+scale1*2.0_r8*nu_div
-        nu_div_lev(k)     = nu_div
-        nu_lev(k)         = (1.0_r8-scale1)*nu    +scale1*nu_p
-        nu_lev(k)         = nu
-        if (hybrid%masterthread) write(iulog,*) "nu_lev=",k,nu_lev(k)
-        if (hybrid%masterthread) write(iulog,*) "nu_div_lev=",k,nu_div_lev(k)
+        scale1        = 0.5_r8*(1.0_r8+tanh(2.0_r8*log(pmid(3)/press)))!
+        nu_div_lev(k) = (1.0_r8-scale1)*nu_div+scale1*nu_div_max
+
+        if (hybrid%masterthread) write(iulog,*) "nu_s_lev     =",k,nu_s_lev(k)
+        if (hybrid%masterthread) write(iulog,*) "nu,nu_div_lev=",k,nu_lev(k),nu_div_lev(k)
+      end do
+    else
+      !
+      ! high top setting
+      !
+      if (hybrid%masterthread) write(iulog,*) ": sponge layer viscosity scaling factor"
+      nu_max     =  5.0_r8*nu_p
+      nu_div_max =  7.5_r8*nu_p
+      do k=1,nlev
+        press = pmid(k)
+        scale1        = 0.5_r8*(1.0_r8+tanh(2.0_r8*log(pmid(10)/press)))!
+        nu_div_lev(k) = (1.0_r8-scale1)*nu_div+scale1*nu_div_max
+        nu_lev(k)     = (1.0_r8-scale1)*nu    +scale1*nu_max
+        nu_s_lev(k)   = (1.0_r8-scale1)*nu_p  +scale1*nu_max
+
+        if (hybrid%masterthread) write(iulog,*) "nu_s_lev     =",k,nu_s_lev(k)
+        if (hybrid%masterthread) write(iulog,*) "nu,nu_div_lev=",k,nu_lev(k),nu_div_lev(k)
       end do
     end if
 
-    if (nu_q<0) nu_q = nu_p ! necessary for consistency
-    if (nu_s<0) nu_s = nu_p ! temperature damping is always equal to nu_p
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !
@@ -607,9 +620,6 @@ contains
       write(iulog,*) rk_str
       write(iulog,'(a)') '   * Spectral-element advection uses SSP preservation RK3'
       write(iulog,'(a)') '   * Viscosity operators use forward Euler'
-      if (ntrac>0) then
-        write(iulog,'(a)') '   * CSLAM uses two time-levels backward trajectory method'
-      end if
     end if
     S_laplacian = 2.0_r8 !using forward Euler for sponge diffusion
     S_hypervis  = 2.0_r8 !using forward Euler for hyperviscosity
@@ -636,7 +646,8 @@ contains
     else
       dt_max_tracer_fvm = -1.0_r8
     end if
-    dt_max_hypervis        = s_hypervis/(MAX(MAXVAL(nu_div_lev(:)),MAXVAL(nu_lev(:)))*normDinv_hypervis)
+    nu_max = MAX(MAX(MAXVAL(nu_div_lev(:)),MAXVAL(nu_lev(:))),MAXVAL(nu_s_lev(:)))
+    dt_max_hypervis        = s_hypervis/(nu_max*normDinv_hypervis)
     dt_max_hypervis_tracer = s_hypervis/(nu_q*normDinv_hypervis)
 
     max_laplace = MAX(MAXVAL(nu_scale_top(:))*nu_top,MAXVAL(kmvis_ref(:)/rho_ref(:)))

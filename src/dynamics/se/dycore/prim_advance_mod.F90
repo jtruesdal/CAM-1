@@ -454,7 +454,7 @@ contains
     use dimensions_mod, only: np, nlev, nc, ntrac, npsq, qsize
     use dimensions_mod, only: hypervis_dynamic_ref_state,ksponge_end
     use dimensions_mod, only: nu_scale_top,nu_lev,kmvis_ref,kmcnd_ref,rho_ref,km_sponge_factor
-    use dimensions_mod, only: kmvisi_ref,kmcndi_ref,rhoi_ref
+    use dimensions_mod, only: kmvisi_ref,kmcndi_ref,rhoi_ref, nu_s_lev
     use control_mod,    only: nu, nu_s, hypervis_subcycle,hypervis_subcycle_sponge, nu_p, nu_top
     use control_mod,    only: molecular_diff
     use hybrid_mod,     only: hybrid_t!, get_loop_ranges
@@ -593,7 +593,7 @@ contains
           !DIR_VECTOR_ALIGNED
           do j=1,np
             do i=1,np
-              ttens(i,j,k,ie)   = -nu_s*ttens(i,j,k,ie)
+              ttens(i,j,k,ie)   = -nu_s_lev(k)*ttens(i,j,k,ie)
               dptens(i,j,k,ie)  = -nu_p*dptens(i,j,k,ie)
               vtens(i,j,1,k,ie) = -nu_lev(k)*vtens(i,j,1,k,ie)
               vtens(i,j,2,k,ie) = -nu_lev(k)*vtens(i,j,2,k,ie)
