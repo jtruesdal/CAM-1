@@ -259,8 +259,8 @@ clean:
 	$(CC) -c $(CFLAGS) -DUNDERSCORE $(CPPFLAGS) $(CPPINCLUDES) -I$(MPAS_SRC_ROOT)/dycore/src/external/ezxml $<
 
 %.o : %.F
-	$(FC) -c $(CPPFLAGS) $(FFLAGS) $(CPPINCLUDES) $(FCINCLUDES) $<
+	$(FC) -c $(CPPFLAGS) $(FFLAGS) $(CPPINCLUDES) $(FCINCLUDES) -I../ $<
 
 %.o : %.F90
-	$(FC) -c $(CPPFLAGS) $(FFLAGS) $(CPPINCLUDES) $(FCINCLUDES) $<
+	$(FC) -c $(CPPFLAGS) $(FFLAGS) $(CPPINCLUDES) $(FCINCLUDES) -I../ $<
 
