@@ -136,7 +136,7 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
      
      ! lap_p_wk should be precomputed:     
      do k=1,nlev
-       call laplace_sphere_wk(pmid_ref(:,:,k),deriv,elem(ie),lap_p_wk(:,:,k),var_coef=.false.)
+       call laplace_sphere_wk(pmid_ref(:,:,k,ie),deriv,elem(ie),lap_p_wk(:,:,k),var_coef=.false.)
      enddo
      
      ! average T to interfaces, then compute dT/dp on midpoints:
