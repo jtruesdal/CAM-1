@@ -9,7 +9,7 @@ module viscosity_mod
 !
   use shr_kind_mod,   only: r8=>shr_kind_r8
   use thread_mod,     only: max_num_threads, omp_get_num_threads
-  use dimensions_mod, only: np, nc, nlev,qsize,nelemd
+  use dimensions_mod, only: np, nc, nlev,nlevp, qsize,nelemd
   use hybrid_mod,     only: hybrid_t, get_loop_ranges, config_thread_region
   use parallel_mod,   only: parallel_t
   use element_mod,    only: element_t
