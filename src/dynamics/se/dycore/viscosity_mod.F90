@@ -51,7 +51,7 @@ module viscosity_mod
 CONTAINS
 
 subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,&
-     dp3d_ref,T_ref)
+     dp3d_ref,T_ref,pmid_ref)
   use derivative_mod, only : subcell_Laplace_fluxes
   use dimensions_mod, only : ntrac, nu_div_lev,nu_lev
   

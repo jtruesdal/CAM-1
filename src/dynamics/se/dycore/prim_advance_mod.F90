@@ -564,9 +564,9 @@ contains
 
       rhypervis_subcycle=1.0_r8/real(hypervis_subcycle,kind=r8)
 !      call biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,&
-!           dp3d_ref,T_ref=T_ref)
+!           dp3d_ref=dp3d_ref,T_ref=T_ref)
       call biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,&
-           dp3d_ref,pmid_ref=pmid_ref)
+           dp3d_ref=dp3d_ref,pmid_ref=pmid_ref)
 
       do ie=nets,nete
         ! compute mean flux
