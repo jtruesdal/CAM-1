@@ -94,9 +94,6 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
   var_coef1 = .true.
   if(hypervis_scaling > 0)    var_coef1 = .false.
 
-  ! REMOVE T_ref (hack)
-  T_ref = 0
-  
   do ie=nets,nete    
 !$omp parallel do num_threads(vert_num_threads) private(k,tmp)
     do k=kbeg,kend
@@ -121,7 +118,6 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
         tmp=elem(ie)%state%T(:,:,k,nt) 
       end if
       call laplace_sphere_wk(tmp,deriv,elem(ie),ttens(:,:,k,ie),var_coef=var_coef1)
-
       if (present(dp3d_ref)) then 
         tmp=elem(ie)%state%dp3d(:,:,k,nt)-dp3d_ref(:,:,k,ie)
       else
