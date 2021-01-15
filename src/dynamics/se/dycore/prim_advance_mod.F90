@@ -486,7 +486,7 @@ contains
     integer :: kbeg, kend, kblk
     real (kind=r8), dimension(np,np,2,nlev,nets:nete)      :: vtens
     real (kind=r8), dimension(np,np,nlev,nets:nete)        :: ttens, dptens
-    real (kind=r8), dimension(np,np,nlev,nets:nete)        :: dp3d_ref, T_ref
+    real (kind=r8), dimension(np,np,nlev,nets:nete)        :: dp3d_ref, T_ref, pmid_ref
     real (kind=r8), dimension(np,np,nets:nete)             :: ps_ref
     real (kind=r8), dimension(0:np+1,0:np+1,nlev)          :: corners
     real (kind=r8), dimension(2,2,2)                       :: cflux
@@ -539,7 +539,8 @@ contains
     T1 = lapse_rate*Tref*cpair/gravit
     T0 = Tref-T1
     do ie=nets,nete
-      do k=1,nlev
+       do k=1,nlev
+        pmid_ref(:,:,k,ie)=hvcoord%hyam(k)*hvcoord%ps0 + hvcoord%hybm(k)*ps_ref(:,:,ie)
         dp3d_ref(:,:,k,ie) = ((hvcoord%hyai(k+1)-hvcoord%hyai(k))*hvcoord%ps0 + &
                               (hvcoord%hybi(k+1)-hvcoord%hybi(k))*ps_ref(:,:,ie))
         tmp                = hvcoord%hyam(k)*hvcoord%ps0+hvcoord%hybm(k)*ps_ref(:,:,ie)
@@ -562,8 +563,10 @@ contains
       call calc_tot_energy_dynamics(elem,fvm,nets,nete,nt,qn0,'dBH')
 
       rhypervis_subcycle=1.0_r8/real(hypervis_subcycle,kind=r8)
+!      call biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,&
+!           dp3d_ref=dp3d_ref,T_ref=T_ref)
       call biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,&
-           dp3d_ref,T_ref)
+           dp3d_ref=dp3d_ref,pmid_ref=pmid_ref)
 
       do ie=nets,nete
         ! compute mean flux
@@ -1040,7 +1043,7 @@ contains
      use physconst,       only: epsilo, get_gz_given_dp_Tv_Rdry
      use physconst,       only: thermodynamic_active_species_num, get_virtual_temp, get_cp_dry
      use physconst,       only: thermodynamic_active_species_idx_dycore,get_R_dry
-     use physconst,       only: dry_air_species_num,get_exner
+     use physconst,       only: dry_air_species_num,get_exner,tref
      use time_mod, only : tevolve
 
      implicit none
@@ -1087,6 +1090,9 @@ contains
      real (kind=r8) :: stashdp3d (np,np,nlev),tempdp3d(np,np), tempflux(nc,nc,4)
      real (kind=r8) :: ckk, term, T_v(np,np,nlev)
      real (kind=r8), dimension(np,np,2) :: grad_exner
+     real (kind=r8), dimension(np,np,2) :: grad_exner_term
+     real (kind=r8), dimension(np,np,2) :: grad_logexner
+     real (kind=r8) :: T0
      real (kind=r8), dimension(np,np)   :: theta_v
 
      type (EdgeDescriptor_t):: desc
@@ -1238,8 +1244,8 @@ contains
            theta_v(:,:)=T_v(:,:,k)/exner(:,:)
            call gradient_sphere(exner(:,:),deriv,elem(ie)%Dinv,grad_exner)
 
-           grad_exner(:,:,1) = cp_dry(:,:,k)*theta_v(:,:)*grad_exner(:,:,1)
-           grad_exner(:,:,2) = cp_dry(:,:,k)*theta_v(:,:)*grad_exner(:,:,2)
+           grad_exner_term(:,:,1) = cp_dry(:,:,k)*theta_v(:,:)*grad_exner(:,:,1)
+           grad_exner_term(:,:,2) = cp_dry(:,:,k)*theta_v(:,:)*grad_exner(:,:,2)
          else
            exner(:,:)=(p_full(:,:,k)/hvcoord%ps0)**kappa(:,:,k,ie)
            theta_v(:,:)=T_v(:,:,k)/exner(:,:)
@@ -1250,14 +1256,24 @@ contains
            grad_kappa_term(:,:,1)=-suml*grad_kappa_term(:,:,1)
            grad_kappa_term(:,:,2)=-suml*grad_kappa_term(:,:,2)
 
-           grad_exner(:,:,1) = cp_dry(:,:,k)*theta_v(:,:)*(grad_exner(:,:,1)+grad_kappa_term(:,:,1))
-           grad_exner(:,:,2) = cp_dry(:,:,k)*theta_v(:,:)*(grad_exner(:,:,2)+grad_kappa_term(:,:,2))
+           grad_exner_term(:,:,1) = cp_dry(:,:,k)*theta_v(:,:)*(grad_exner(:,:,1)+grad_kappa_term(:,:,1))
+           grad_exner_term(:,:,2) = cp_dry(:,:,k)*theta_v(:,:)*(grad_exner(:,:,2)+grad_kappa_term(:,:,2))
          end if
 
+         ! balanced ref profile correction:
+         T0 = TREF-.0065*TREF*Cp/g     ! = 97
+         call gradient_sphere(log(exner(:,:)),deriv,elem(ie)%Dinv,grad_logexner)
+         grad_exner_term(:,:,1)=grad_exner_term(:,:,1) + &
+              Cp*T0*(grad_logexner(:,:,1)-grad_exner(:,:,1)/exner(:,:))
+         grad_exner_term(:,:,2)=grad_exner_term(:,:,2) + &
+              Cp*T0*(grad_logexner(:,:,2)-grad_exner(:,:,2)/exner(:,:))
+
+
+         
          do j=1,np
            do i=1,np
-             glnps1 = grad_exner(i,j,1)
-             glnps2 = grad_exner(i,j,2)
+             glnps1 = grad_exner_term(i,j,1)
+             glnps2 = grad_exner_term(i,j,2)
              v1     = elem(ie)%state%v(i,j,1,k,n0)
              v2     = elem(ie)%state%v(i,j,2,k,n0)
 
