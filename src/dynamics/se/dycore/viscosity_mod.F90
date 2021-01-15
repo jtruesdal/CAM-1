@@ -78,6 +78,12 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
   real (kind=r8), dimension(np,np) :: tmp
   real (kind=r8), dimension(np,np) :: tmp2
   real (kind=r8), dimension(np,np,2) :: v
+  
+  real (kind=r8), dimension(np,np,nlev) :: lap_p_wk
+  real (kind=r8), dimension(np,np,nlevp) :: T_i
+  real (kind=r8), dimension(np,np) :: ps_ref
+
+
   real (kind=r8) :: nu_ratio1, nu_ratio2
   logical var_coef1
   
@@ -88,7 +94,9 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
   !so tensor is only used on second call to laplace_sphere_wk
   var_coef1 = .true.
   if(hypervis_scaling > 0)    var_coef1 = .false.
-  
+
+  ! REMOVE T_ref (hack)
+  T_ref = 0
   
   do ie=nets,nete    
 !$omp parallel do num_threads(vert_num_threads) private(k,tmp)
@@ -114,6 +122,7 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
         tmp=elem(ie)%state%T(:,:,k,nt) 
       end if
       call laplace_sphere_wk(tmp,deriv,elem(ie),ttens(:,:,k,ie),var_coef=var_coef1)
+
       if (present(dp3d_ref)) then 
         tmp=elem(ie)%state%dp3d(:,:,k,nt)-dp3d_ref(:,:,k,ie)
       else
@@ -123,7 +132,37 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
 
       call vlaplace_sphere_wk(elem(ie)%state%v(:,:,:,k,nt),deriv,elem(ie),.true.,vtens(:,:,:,k,ie), &
            var_coef=var_coef1,nu_ratio=nu_ratio1)
-    enddo
+     enddo
+
+     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     ! add p correction to approximate Laplace on pressure surfaces
+     ! Laplace_p(T) = Laplace(T) - dT/dp Laplace(p)
+     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     
+     ! lap_p_wk should be precomputed:     
+     ps_ref(:,:) =  ptop + sum(dp3d_ref(:,:,:,ie),3)
+     do k=1,nlev
+       tmp(:,:) = hvcoord%hyam(k)*hvcoord%ps0 + hvcoord%hybm(k)*ps_ref(:,:)
+       call laplace_sphere_wk(tmp,deriv,elem(ie),lap_p_wk(:,:,k),var_coef=.false.)
+     enddo
+     
+     ! average T to interfaces, then compute dT/dp on midpoints:
+     T_i(:,:,1) = elem(ie)%state%T(:,:,1,nt)
+     T_i(:,:,nlevp) = elem(ie)%state%T(:,:,nlev,nt)
+     do k=2,nlev
+       T_i(:,:,k)=(elem(ie)%state%T(:,:,k,nt) + elem(ie)%state%T(:,:,k-1,nt))/2
+     enddo
+     do k=1,nlev
+       tmp(:,:) = (T_i(:,:,k+1)-T_i(:,:,k))/dp_ref(:,:,k)
+       dp_thresh=.025  ! tunable coefficient 
+       tmp(:,:)=tmp(:,:) / (1 + abs(tmp(:,:))/dp_thresh)
+       ttens(:,:,k,ie)=ttens(:,:,k,ie)-tmp(:,:)*lap_p_wk(:,:,k)   ! correction term
+     enddo
+
+      
+
+      
+
     
     kptr = kbeg - 1
     call edgeVpack(edge3,ttens(:,:,kbeg:kend,ie),kblk,kptr,ie)
