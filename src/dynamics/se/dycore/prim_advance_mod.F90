@@ -1043,7 +1043,7 @@ contains
      use physconst,       only: epsilo, get_gz_given_dp_Tv_Rdry
      use physconst,       only: thermodynamic_active_species_num, get_virtual_temp, get_cp_dry
      use physconst,       only: thermodynamic_active_species_idx_dycore,get_R_dry
-     use physconst,       only: dry_air_species_num,get_exner,tref
+     use physconst,       only: dry_air_species_num,get_exner,tref,cpair,gravit,lapse_rate
      use time_mod, only : tevolve
 
      implicit none
@@ -1092,7 +1092,7 @@ contains
      real (kind=r8), dimension(np,np,2) :: grad_exner
      real (kind=r8), dimension(np,np,2) :: grad_exner_term
      real (kind=r8), dimension(np,np,2) :: grad_logexner
-     real (kind=r8) :: T0
+     real (kind=r8) :: T0,T1
      real (kind=r8), dimension(np,np)   :: theta_v
 
      type (EdgeDescriptor_t):: desc
@@ -1261,12 +1261,20 @@ contains
          end if
 
          ! balanced ref profile correction:
-         T0 = TREF-.0065*TREF*Cp/g     ! = 97
+         ! reference temperature profile (Simmons and Jiabin, 1991, QJRMS, Section 2a)
+         !
+         !  Tref = T0+T1*Exner
+         !  T1 = .0065*Tref*Cp/g ! = ~191
+         !  T0 = Tref-T1         ! = ~97
+         !
+         T1 = lapse_rate*Tref*cpair/gravit
+         T0 = Tref-T1
+
          call gradient_sphere(log(exner(:,:)),deriv,elem(ie)%Dinv,grad_logexner)
          grad_exner_term(:,:,1)=grad_exner_term(:,:,1) + &
-              Cp*T0*(grad_logexner(:,:,1)-grad_exner(:,:,1)/exner(:,:))
+              cpair*T0*(grad_logexner(:,:,1)-grad_exner(:,:,1)/exner(:,:))
          grad_exner_term(:,:,2)=grad_exner_term(:,:,2) + &
-              Cp*T0*(grad_logexner(:,:,2)-grad_exner(:,:,2)/exner(:,:))
+              cpair*T0*(grad_logexner(:,:,2)-grad_exner(:,:,2)/exner(:,:))
 
 
          
