@@ -68,7 +68,7 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
   real (kind=r8), intent(out), dimension(nc,nc,4,nlev,nets:nete) :: dpflux
   real (kind=r8), dimension(np,np,2,nlev,nets:nete)  :: vtens
   real (kind=r8), dimension(np,np,nlev,nets:nete) :: ttens,dptens
-  real (kind=r8), dimension(np,np,nlev,nets:nete), optional :: dp3d_ref,T_ref
+  real (kind=r8), dimension(np,np,nlev,nets:nete), optional :: dp3d_ref,T_ref,pmid_ref
   type (EdgeBuffer_t)  , intent(inout) :: edge3
   type (derivative_t)  , intent(in) :: deriv
   
@@ -81,7 +81,6 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
   
   real (kind=r8), dimension(np,np,nlev) :: lap_p_wk
   real (kind=r8), dimension(np,np,nlevp) :: T_i
-  real (kind=r8), dimension(np,np) :: ps_ref
 
 
   real (kind=r8) :: nu_ratio1, nu_ratio2
@@ -140,10 +139,8 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
      
      ! lap_p_wk should be precomputed:     
-     ps_ref(:,:) =  ptop + sum(dp3d_ref(:,:,:,ie),3)
      do k=1,nlev
-       tmp(:,:) = hvcoord%hyam(k)*hvcoord%ps0 + hvcoord%hybm(k)*ps_ref(:,:)
-       call laplace_sphere_wk(tmp,deriv,elem(ie),lap_p_wk(:,:,k),var_coef=.false.)
+       call laplace_sphere_wk(pmid_ref(:,:,k),deriv,elem(ie),lap_p_wk(:,:,k),var_coef=.false.)
      enddo
      
      ! average T to interfaces, then compute dT/dp on midpoints:
@@ -153,7 +150,7 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
        T_i(:,:,k)=(elem(ie)%state%T(:,:,k,nt) + elem(ie)%state%T(:,:,k-1,nt))/2
      enddo
      do k=1,nlev
-       tmp(:,:) = (T_i(:,:,k+1)-T_i(:,:,k))/dp_ref(:,:,k)
+       tmp(:,:) = (T_i(:,:,k+1)-T_i(:,:,k))/dp3d_ref(:,:,k)
        dp_thresh=.025  ! tunable coefficient 
        tmp(:,:)=tmp(:,:) / (1 + abs(tmp(:,:))/dp_thresh)
        ttens(:,:,k,ie)=ttens(:,:,k,ie)-tmp(:,:)*lap_p_wk(:,:,k)   ! correction term
