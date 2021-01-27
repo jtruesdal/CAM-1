@@ -107,9 +107,6 @@ contains
     !                 (K&G 2nd order method has CFL=4. tiny CFL improvement not worth 2nd order)
     !
 
-    if (dry_air_species_num > 0) &
-      call endrun('ERROR: SE dycore not ready for species dependent thermodynamics - ABORT')
-
     call omp_set_nested(.true.)
 
     ! default weights for computing mean dynamics fluxes
