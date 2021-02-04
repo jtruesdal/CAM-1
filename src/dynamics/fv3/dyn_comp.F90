@@ -48,13 +48,13 @@ module dyn_comp
                                fv3_lcp_moist,fv3_lcv_moist,qsize_tracer_idx_cam2dyn,fv3_scale_ttend
     use dyn_grid,        only: mytile, ini_grid_name
     use field_manager_mod, only: MODEL_ATMOS
-    use fms_io_mod,      only: set_domain, nullify_domain
+    use fms_io_mod,      only: set_domain
     use fv_arrays_mod,   only: fv_atmos_type, fv_grid_bounds_type
-    use fv_grid_utils_mod,only: cubed_to_latlon, g_sum
+    use fv_grid_utils_mod,only: g_sum
     use fv_nesting_mod,  only: twoway_nesting
     use infnan,          only: isnan
     use mpp_domains_mod, only: mpp_update_domains, domain2D, DGRID_NE
-    use mpp_mod,         only: mpp_set_current_pelist,mpp_pe
+    use mpp_mod,         only: mpp_set_current_pelist
     use physconst,       only: gravit, cpair, rearth, omega, pi
     use ppgrid,          only: pver
     use shr_kind_mod,    only: r8 => shr_kind_r8, r4 => shr_kind_r4, i8 => shr_kind_i8
@@ -79,13 +79,15 @@ module dyn_comp
 
 type dyn_import_t
   type (fv_atmos_type),  pointer :: Atm(:) => null()
-  integer,               pointer :: mygindex(:,:) => null()
-  integer,               pointer :: mylindex(:,:) => null()
 end type dyn_import_t
 
 type dyn_export_t
   type (fv_atmos_type),  pointer :: Atm(:) => null()
 end type dyn_export_t
+
+! Frontogenesis indices
+integer, public    :: frontgf_idx      = -1
+integer, public    :: frontga_idx      = -1
 
 ! Private interfaces
 interface read_dyn_var
@@ -359,6 +361,13 @@ subroutine dyn_register()
    ! These fields are computed by the dycore and passed to the physics via the
    ! physics buffer.
 
+!!$   if (use_gw_front .or. use_gw_front_igw) then
+!!$      call pbuf_add_field("FRONTGF", "global", dtype_r8, (/pcols,pver/),       &
+!!$         frontgf_idx)
+!!$      call pbuf_add_field("FRONTGA", "global", dtype_r8, (/pcols,pver/),       &
+!!$         frontga_idx)
+!!$   end if
+
 end subroutine dyn_register
 
 !=============================================================================================
@@ -374,13 +383,12 @@ subroutine dyn_init(dyn_in, dyn_out)
   use cam_history,     only: addfld, horiz_only
   use cam_history,     only: register_vector_field
   use cam_pio_utils,   only: clean_iodesc_list
-  use dyn_grid,        only: Atm,mygindex,mylindex
-  use fv_diagnostics_mod, only: fv_diag_init
+  use dyn_grid,        only: Atm
   use fv_mp_mod,       only: fill_corners, YDir, switch_current_Atm
+!jt  use gravity_waves_sources, only: gws_init
   use infnan,          only: inf, assignment(=)
-  use physconst,       only: cpwv, cpliq, cpice
   use physconst,          only: thermodynamic_active_species_num, dry_air_species_num, thermodynamic_active_species_idx
-  use physconst,          only: thermodynamic_active_species_idx_dycore, rair, cpair
+  use physconst,          only: thermodynamic_active_species_idx_dycore, cpair
   use tracer_manager_mod,     only: register_tracers
 
   ! arguments:
@@ -433,7 +441,7 @@ subroutine dyn_init(dyn_in, dyn_out)
 
    integer :: istage, ivars
    character (len=108) :: str1, str2, str3
-   integer :: is,isd,ie,ied,js,jsd,je,jed
+   integer :: is,isd,ie,ied,js,jsd,je,jed,tile
    integer :: fv3idx,idx
 
    integer        :: unito
@@ -545,11 +553,12 @@ subroutine dyn_init(dyn_in, dyn_out)
    ied = Atm(mytile)%bd%ied
    jsd = Atm(mytile)%bd%jsd
    jed = Atm(mytile)%bd%jed
+   npx   = Atm(mytile)%flagstruct%npx
+   npy   = Atm(mytile)%flagstruct%npy
+   tile = Atm(mytile)%tile
 
    ! Data initialization
    dyn_in%Atm  => Atm
-   dyn_in%mygindex  => mygindex
-   dyn_in%mylindex  => mylindex
    dyn_out%Atm => Atm
 
    allocate(u_dt(isd:ied,jsd:jed,nlev))
@@ -599,6 +608,8 @@ subroutine dyn_init(dyn_in, dyn_out)
       call clean_iodesc_list()
 
    end if
+
+!jt   if (use_gw_front .or. use_gw_front_igw) call gws_init(elem)
 
    call switch_current_Atm(Atm(mytile))
    call set_domain ( Atm(mytile)%domain )
@@ -859,10 +870,10 @@ subroutine read_inidat(dyn_in)
   use constituents,          only: pcnst, cnst_name, cnst_read_iv,qmin, cnst_type
   use const_init,            only: cnst_init_default
   use cam_initfiles,         only: initial_file_get_id, topo_file_get_id, pertlim
-  use cam_grid_support,      only: cam_grid_id, cam_grid_get_gcid, iMap, &
-                                   cam_grid_get_latvals, cam_grid_get_lonvals
-  use cam_history_support,   only: max_fieldname_len
+  use cam_grid_support,      only: cam_grid_id, cam_grid_get_latvals, cam_grid_get_lonvals
+  use dyn_grid,              only: get_dyn_grid_info
   use hycoef,                only: hyai, hybi, ps0
+  use physics_column_type,   only: physics_column_t
 
   ! Arguments:
   type (dyn_import_t), target, intent(inout) :: dyn_in   ! dynamics import
@@ -876,9 +887,8 @@ subroutine read_inidat(dyn_in)
 
   type(file_desc_t),     pointer :: fh_topo       => null()
   type(fv_atmos_type),   pointer :: Atm(:)        => null()
-  integer,               pointer :: mylindex(:,:) => null()
-  integer,               pointer :: mygindex(:,:) => null()
   type(file_desc_t)              :: fh_ini
+  type(physics_column_t), allocatable :: dyn_columns(:) ! Dyn decomp
 
 
   character(len=*), parameter      :: subname='READ_INIDAT'
@@ -910,14 +920,18 @@ subroutine read_inidat(dyn_in)
   real(r8)                                  :: fv3_totwatermass, fv3_airmass
   real(r8)                                  :: initial_global_ave_dry_ps,reldif
   logical                                   :: inic_wet !initial condition is based on wet pressure and water species
+  integer                                   :: hdim1_d ! # longitudes or grid size
+  integer                                   :: hdim2_d ! # latitudes or 1
+  integer                                   :: num_lev ! # levels
+  integer                                   :: index_model_top_layer
+  integer                                   :: index_surface_layer
+  logical                                   :: unstructured
 
   !-----------------------------------------------------------------------
 
   Atm => dyn_in%Atm
   grid => Atm(mytile)%gridstruct%grid_64
   agrid => Atm(mytile)%gridstruct%agrid_64
-  mylindex => dyn_in%mylindex
-  mygindex => dyn_in%mygindex
 
   is = Atm(mytile)%bd%is
   ie = Atm(mytile)%bd%ie
@@ -951,11 +965,16 @@ subroutine read_inidat(dyn_in)
   latvals_rad(:) = latvals_deg(:)*deg2rad
   lonvals_rad(:) = lonvals_deg(:)*deg2rad
 
+  call get_dyn_grid_info(hdim1_d, hdim2_d, num_lev,                       &
+       index_model_top_layer, index_surface_layer, unstructured, dyn_columns)
+
+
   allocate(glob_ind(blksize))
+  n=0
   do j = js, je
      do i = is, ie
-        n=mylindex(i,j)
-        glob_ind(n) = mygindex(i,j)
+        n=n+1
+        glob_ind(n) = dyn_columns(n)%global_col_num
      end do
   end do
 
@@ -978,10 +997,11 @@ subroutine read_inidat(dyn_in)
      end do
 
      call analytic_ic_set_ic(vcoord, latvals_rad, lonvals_rad, glob_ind,PS=dbuf2)
+     n=0
      do j = js, je
         do i = is, ie
            ! PS
-           n=mylindex(i,j)
+           n=n+1
            atm(mytile)%ps(i,j) =   dbuf2(n, 1)
         end do
      end do
@@ -991,11 +1011,11 @@ subroutine read_inidat(dyn_in)
 
      call analytic_ic_set_ic(vcoord, latvals_rad, lonvals_rad, glob_ind,            &
           T=dbuf3(:,:,:))
-
+     n=0
      do j = js, je
         do i = is, ie
            ! T
-           n=mylindex(i,j)
+           n=n+1
            atm(mytile)%pt(i,j,:) = dbuf3(n, :, 1)
         end do
      end do
@@ -1004,11 +1024,11 @@ subroutine read_inidat(dyn_in)
      dbuf3=0._r8
      call analytic_ic_set_ic(vcoord, latvals_rad, lonvals_rad, glob_ind,            &
           U=dbuf3(:,:,:))
-
+     n=0
      do j = js, je
         do i = is, ie
            ! U a-grid
-           n=mylindex(i,j)
+           n=n+1
            atm(mytile)%ua(i,j,:) = dbuf3(n, :, 1)
         end do
      end do
@@ -1016,11 +1036,11 @@ subroutine read_inidat(dyn_in)
      dbuf3=0._r8
      call analytic_ic_set_ic(vcoord, latvals_rad, lonvals_rad, glob_ind,            &
           V=dbuf3(:,:,:))
-
+     n=0
      do j = js, je
         do i = is, ie
            ! V a-grid
-           n=mylindex(i,j)
+           n=n+1
            atm(mytile)%va(i,j,:) = dbuf3(n, :, 1)
         end do
      end do
@@ -1032,9 +1052,10 @@ subroutine read_inidat(dyn_in)
      do m_cnst = 1, pcnst
         m_cnst_ffsl=qsize_tracer_idx_cam2dyn(m_cnst)
         Atm(mytile)%q(:,:,:,m_cnst_ffsl) = 0.0_r8
+        indx=0
         do j = js, je
            do i = is, ie
-              indx=mylindex(i,j)
+              indx=indx+1
               Atm(mytile)%q(i,j,:,m_cnst_ffsl) = dbuf4(indx, :, 1, m_cnst)
            end do
         end do
@@ -1093,9 +1114,10 @@ subroutine read_inidat(dyn_in)
         call random_seed(size=rndm_seed_sz)
         allocate(rndm_seed(rndm_seed_sz))
 
+        indx=0
         do i=is,ie
            do j=js,je
-              indx=mylindex(i,j)
+              indx=indx+1
               rndm_seed = glob_ind(indx)
               call random_seed(put=rndm_seed)
               do k=1,nlev
@@ -1155,10 +1177,10 @@ subroutine read_inidat(dyn_in)
                 m_cnst_ffsl,' to default'
            call cnst_init_default(m_cnst, latvals_rad, lonvals_rad, dbuf3)
            do k=1, nlev
-              indx = 1
+              indx = 0
               do j = js, je
                  do i = is, ie
-                    indx=mylindex(i,j)
+                    indx=indx+1
                     atm(mytile)%q(i,j, k, m_cnst_ffsl) = max(qmin(m_cnst),dbuf3(indx,k,1))
                  end do
               end do
@@ -1235,9 +1257,10 @@ subroutine read_inidat(dyn_in)
 
   ! Process phis_tmp
   atm(mytile)%phis = 0.0_r8
+  indx=0
   do j = js, je
      do i = is, ie
-        indx = mylindex(i,j)
+        indx = indx+1
         atm(mytile)%phis(i,j) = phis_tmp(indx,1)
      end do
   end do
@@ -1388,7 +1411,7 @@ end subroutine read_inidat
     use cam_history,            only: outfld, hist_fld_active
     use constituents,           only: cnst_get_ind
     use dimensions_mod,         only: nlev
-    use fv_mp_mod,              only: ng
+
     !------------------------------Arguments--------------------------------
 
     type(fv_atmos_type), pointer, intent(in) :: Atm(:)
