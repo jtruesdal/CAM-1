@@ -133,7 +133,7 @@ subroutine dyn_readnl(nlfilename)
                         fv3_io_layout(2), fv3_k_split, fv3_kord_mt, fv3_kord_tm, fv3_kord_tr, &
                         fv3_kord_wz, fv3_layout(2), fv3_n_split, fv3_n_sponge, fv3_na_init, &
                         fv3_ncnst, fv3_nord, fv3_npx, fv3_npy, fv3_npz, fv3_ntiles, &
-                        fv3_nwat, fv3_print_freq
+                        fv3_nwat, fv3_print_freq, fv3_q_split
 
   real(r8)           :: fv3_beta, fv3_d2_bg, fv3_d2_bg_k1, fv3_d2_bg_k2, fv3_d4_bg, &
                         fv3_d_con, fv3_d_ext, fv3_dddmp, fv3_delt_max, fv3_ke_bg, &
@@ -183,7 +183,7 @@ subroutine dyn_readnl(nlfilename)
        fv3_n_split,fv3_n_sponge,fv3_na_init,fv3_ncnst,fv3_no_dycore, &
        fv3_nord,fv3_npx,fv3_npy,fv3_npz,fv3_ntiles,fv3_nwat, &
        fv3_print_freq,fv3_range_warn,fv3_rf_cutoff,fv3_tau, &
-       fv3_vtdm4
+       fv3_vtdm4,fv3_q_split
   !--------------------------------------------------------------------------
 
   ! defaults for namelist variables not set by build-namelist
@@ -225,6 +225,7 @@ subroutine dyn_readnl(nlfilename)
   ! Broadcast namelist values to all PEs
   call MPI_bcast(fv3_npes, 1, mpi_integer, masterprocid, mpicom, ierr)
   call MPI_bcast(fv3_scale_ttend, 1, mpi_logical, masterprocid, mpicom, ierr)
+  call MPI_bcast(fv3_hydrostatic, 1, mpi_logical, masterprocid, mpicom, ierr)
   call MPI_bcast(fv3_lcv_moist, 1, mpi_logical, masterprocid, mpicom, ierr)
   call MPI_bcast(fv3_lcp_moist, 1, mpi_logical, masterprocid, mpicom, ierr)
 
@@ -235,6 +236,10 @@ subroutine dyn_readnl(nlfilename)
   if (fv3_npes <= 0) then
      call endrun('dyn_readnl: ERROR: fv3_npes must be > 0')
   end if
+
+  ! Non-hydrostatic runs not currently supported
+  if (.not.fv3_hydrostatic) &
+       call endrun('dyn_readnl: ERROR FV3 Non-hydrostatic option is not supported, set namelist fv3_hydrostatic = .true.')
 
   !
   ! write fv3 dycore namelist options to log
@@ -299,6 +304,7 @@ subroutine dyn_readnl(nlfilename)
      write (iulog,*) '  fv3_stack_size            = ',fv3_stack_size
      write (iulog,*) '  fv3_tau                   = ',fv3_tau
      write (iulog,*) '  fv3_vtdm4                 = ',fv3_vtdm4
+     write (iulog,*) '  fv3_q_split                 = ',fv3_q_split
   end if
 
   ! Create the input.nml namelist needed by the fv3dycore.
@@ -361,13 +367,6 @@ subroutine dyn_register()
    ! These fields are computed by the dycore and passed to the physics via the
    ! physics buffer.
 
-!!$   if (use_gw_front .or. use_gw_front_igw) then
-!!$      call pbuf_add_field("FRONTGF", "global", dtype_r8, (/pcols,pver/),       &
-!!$         frontgf_idx)
-!!$      call pbuf_add_field("FRONTGA", "global", dtype_r8, (/pcols,pver/),       &
-!!$         frontga_idx)
-!!$   end if
-
 end subroutine dyn_register
 
 !=============================================================================================
@@ -385,7 +384,6 @@ subroutine dyn_init(dyn_in, dyn_out)
   use cam_pio_utils,   only: clean_iodesc_list
   use dyn_grid,        only: Atm
   use fv_mp_mod,       only: fill_corners, YDir, switch_current_Atm
-!jt  use gravity_waves_sources, only: gws_init
   use infnan,          only: inf, assignment(=)
   use physconst,          only: thermodynamic_active_species_num, dry_air_species_num, thermodynamic_active_species_idx
   use physconst,          only: thermodynamic_active_species_idx_dycore, cpair
@@ -608,8 +606,6 @@ subroutine dyn_init(dyn_in, dyn_out)
       call clean_iodesc_list()
 
    end if
-
-!jt   if (use_gw_front .or. use_gw_front_igw) call gws_init(elem)
 
    call switch_current_Atm(Atm(mytile))
    call set_domain ( Atm(mytile)%domain )

@@ -8434,6 +8434,11 @@ dt_atmos. Computing these diagnostics requires some computational overhead.
 Default: 0
 </entry>
 
+<entry id="fv3_q_split" type="integer" category="dyn_fv3"
+       group="fv_core_nml" valid_values="" >
+Default:
+</entry>
+
 <entry id="fv3_range_warn" type="logical" category="dyn_fv3"
        group="fv_core_nml" valid_values="" >
 Logical: checks whether the values of the prognostic variables
