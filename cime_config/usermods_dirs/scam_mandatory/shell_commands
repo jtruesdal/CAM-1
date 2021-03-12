@@ -9,4 +9,7 @@
 ./xmlchange REST_OPTION=never
 
 # Note that clm cannot use initial conditions with SCAM -so will only use specified phenology
-./xmlchange CLM_FORCE_COLDSTART='on'
+# Only change if CLM_FORCE_COLDSTART exists.
+#if [ `./xmlquery --value CLM_FORCE_COLDSTART |& grep -c 'ERROR'` -eq 0  ]; then
+#./xmlchange CLM_FORCE_COLDSTART='on'
+#fi
