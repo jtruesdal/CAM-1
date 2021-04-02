@@ -536,13 +536,16 @@ contains
     T1 = lapse_rate*Tref*cpair/gravit
     T0 = Tref-T1
     do ie=nets,nete
-       do k=1,nlev
-        pmid_ref(:,:,k,ie)=hvcoord%hyam(k)*hvcoord%ps0 + hvcoord%hybm(k)*ps_ref(:,:,ie)
+      do k=1,nlev
+        pmid_ref(:,:,k,ie) =hvcoord%hyam(k)*hvcoord%ps0 + hvcoord%hybm(k)*ps_ref(:,:,ie)
         dp3d_ref(:,:,k,ie) = ((hvcoord%hyai(k+1)-hvcoord%hyai(k))*hvcoord%ps0 + &
                               (hvcoord%hybi(k+1)-hvcoord%hybi(k))*ps_ref(:,:,ie))
-        tmp                = hvcoord%hyam(k)*hvcoord%ps0+hvcoord%hybm(k)*ps_ref(:,:,ie)
-        tmp2               = (tmp/hvcoord%ps0)**cappa
-        T_ref(:,:,k,ie)    = (T0+T1*tmp2)
+        if (hvcoord%hybm(k)>0) then
+          tmp2               = (pmid_ref(:,:,k,ie)/hvcoord%ps0)**cappa
+          T_ref(:,:,k,ie)    = (T0+T1*tmp2)
+        else
+          T_ref(:,:,k,ie)    = 0.0_r8
+        end if
       end do
     end do
 
@@ -562,7 +565,7 @@ contains
       rhypervis_subcycle=1.0_r8/real(hypervis_subcycle,kind=r8)
 !      call biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,&
 !           dp3d_ref=dp3d_ref,T_ref=T_ref)
-      call biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,&
+      call biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,hvcoord,&
            dp3d_ref=dp3d_ref,pmid_ref=pmid_ref)
 
       do ie=nets,nete
@@ -1267,11 +1270,13 @@ contains
          T1 = lapse_rate*Tref*cpair/gravit
          T0 = Tref-T1
 
-         call gradient_sphere(log(exner(:,:)),deriv,elem(ie)%Dinv,grad_logexner)
-         grad_exner_term(:,:,1)=grad_exner_term(:,:,1) + &
-              cpair*T0*(grad_logexner(:,:,1)-grad_exner(:,:,1)/exner(:,:))
-         grad_exner_term(:,:,2)=grad_exner_term(:,:,2) + &
-              cpair*T0*(grad_logexner(:,:,2)-grad_exner(:,:,2)/exner(:,:))
+         if (hvcoord%hybm(k)>0) then
+           call gradient_sphere(log(exner(:,:)),deriv,elem(ie)%Dinv,grad_logexner)
+           grad_exner_term(:,:,1)=grad_exner_term(:,:,1) + &
+                cpair*T0*(grad_logexner(:,:,1)-grad_exner(:,:,1)/exner(:,:))
+           grad_exner_term(:,:,2)=grad_exner_term(:,:,2) + &
+                cpair*T0*(grad_logexner(:,:,2)-grad_exner(:,:,2)/exner(:,:))
+         end if
 
 
          

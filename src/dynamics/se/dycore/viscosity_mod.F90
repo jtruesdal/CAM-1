@@ -50,11 +50,11 @@ module viscosity_mod
 
 CONTAINS
 
-subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,&
+subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,hvcoord,&
      dp3d_ref,T_ref,pmid_ref)
   use derivative_mod, only : subcell_Laplace_fluxes
   use dimensions_mod, only : ntrac, nu_div_lev,nu_lev
-  
+  use hybvcoord_mod,  only : hvcoord_t  
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! compute weak biharmonic operator
   !    input:  h,v (stored in elem()%, in lat-lon coordinates
@@ -71,7 +71,7 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
   real (kind=r8), dimension(np,np,nlev,nets:nete), optional :: dp3d_ref,T_ref,pmid_ref
   type (EdgeBuffer_t)  , intent(inout) :: edge3
   type (derivative_t)  , intent(in) :: deriv
-  
+  type (hvcoord_t)     , intent(in) :: hvcoord  
   ! local
   integer :: i,j,k,kptr,ie,kblk
 !  real (kind=r8), dimension(:,:), pointer :: rspheremv
@@ -147,9 +147,11 @@ subroutine biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,
      enddo
 
      do k=1,nlev
-       tmp(:,:) = (T_i(:,:,k+1)-T_i(:,:,k))/dp3d_ref(:,:,k,ie)
-       tmp(:,:)=tmp(:,:) / (1.0_r8 + abs(tmp(:,:))/dp_thresh)
-       ttens(:,:,k,ie)=ttens(:,:,k,ie)-tmp(:,:)*lap_p_wk(:,:,k)   ! correction term
+       if (hvcoord%hybm(k)>0) then
+         tmp(:,:) = (T_i(:,:,k+1)-T_i(:,:,k))/dp3d_ref(:,:,k,ie)
+         tmp(:,:)=tmp(:,:) / (1.0_r8 + abs(tmp(:,:))/dp_thresh)
+         ttens(:,:,k,ie)=ttens(:,:,k,ie)-tmp(:,:)*lap_p_wk(:,:,k)   ! correction term
+       endif
      enddo
 
       

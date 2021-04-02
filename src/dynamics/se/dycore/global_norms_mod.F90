@@ -558,7 +558,7 @@ contains
     nu_lev(:)     = nu
     nu_s_lev(:)   = nu_p
     
-    if (ptop>100.0_r8) then
+    if (ptop>0.07_r8) then
       !
       ! CAM setting
       !
