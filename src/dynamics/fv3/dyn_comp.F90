@@ -54,10 +54,10 @@ module dyn_comp
     use fv_nesting_mod,  only: twoway_nesting
     use infnan,          only: isnan
     use mpp_domains_mod, only: mpp_update_domains, domain2D, DGRID_NE
-    use mpp_mod,         only: mpp_set_current_pelist,mpp_pe
+    use mpp_mod,         only: mpp_set_current_pelist,mpp_pe,mpp_sync
     use physconst,       only: gravit, cpair, rearth, omega, pi
     use ppgrid,          only: pver
-    use shr_kind_mod,    only: r8 => shr_kind_r8, r4 => shr_kind_r4, i8 => shr_kind_i8
+    use shr_kind_mod,    only: r8 => shr_kind_r8, r4 => shr_kind_r4, i8 => shr_kind_i8,max_chars=>shr_kind_cl
     use spmd_utils,      only: masterproc, masterprocid, mpicom, npes,iam
     use spmd_utils,      only: mpi_integer, mpi_logical
     use tracer_manager_mod,     only: get_tracer_index
@@ -376,19 +376,26 @@ subroutine dyn_init(dyn_in, dyn_out)
   use cam_pio_utils,   only: clean_iodesc_list
   use dyn_grid,        only: Atm,mygindex,mylindex
   use fv_diagnostics_mod, only: fv_diag_init
-  use fv_mp_mod,       only: fill_corners, YDir, switch_current_Atm
+  use fv_mp_mod,       only: fill_corners, YDir
   use infnan,          only: inf, assignment(=)
   use physconst,       only: cpwv, cpliq, cpice
   use physconst,          only: thermodynamic_active_species_num, dry_air_species_num, thermodynamic_active_species_idx
   use physconst,          only: thermodynamic_active_species_idx_dycore, rair, cpair
   use tracer_manager_mod, only: register_tracers
   use dyn_tests_utils,    only: vc_dycore, vc_moist_pressure, string_vc, vc_str_lgth
+  use string_utils,    only: to_upper
+  use time_manager,           only: get_curr_date,timemgr_get_calendar_cf
+  use time_manager_mod,       only: time_type,set_date,set_calendar_type, &
+                                    THIRTY_DAY_MONTHS,JULIAN,GREGORIAN,NOLEAP,NO_CALENDAR
+  use diag_manager_mod,       only: diag_manager_init
+
   ! arguments:
    type (dyn_import_t),     intent(out) :: dyn_in
    type (dyn_export_t),     intent(out) :: dyn_out
 
    ! Locals
    character(len=*), parameter :: subname='dyn_init'
+   character(len=max_chars)    :: calendar  ! Calendar type
    real(r8)                    :: alpha
 
 
@@ -397,6 +404,8 @@ subroutine dyn_init(dyn_in, dyn_out)
    logical, pointer :: cubed_sphere
    type(domain2d), pointer     :: domain
    integer                     :: i,j,m
+   integer                     :: year,month,day,hour,min,sec,tod
+   type (time_type)            :: fv3time
 
    ! variables for initializing energy and axial angular momentum diagnostics
    character (len = 3), dimension(8) :: stage = (/"dED","dAP","dBD","dAT","dAF","dAD","dAR","dBF"/)
@@ -603,7 +612,6 @@ subroutine dyn_init(dyn_in, dyn_out)
 
    end if
 
-   call switch_current_Atm(Atm(mytile))
    call set_domain ( Atm(mytile)%domain )
 
    ! Forcing from physics on the FFSL grid
@@ -643,7 +651,31 @@ subroutine dyn_init(dyn_in, dyn_out)
    allocate(tt_dyn(is:ie,js:je,ndiag))
    allocate(mr_dyn(is:ie,js:je,ndiag))
    allocate(mo_dyn(is:ie,js:je,ndiag))
+! Initialize the fv3 diagnostic interface set fv3 start time.
+!     
+   call get_curr_date(year,month,day,tod)
+   hour    = tod / 3600
+   min     = (tod - hour*3600) / 60
+   sec     = (tod - hour*3600 - min*60)
 
+   calendar = to_upper(timemgr_get_calendar_cf())
+   select case ( trim(calendar) )
+   case ( 'NOLEAP' )
+      call set_calendar_type(NOLEAP)
+   case ( 'GREGORIAN' )
+      call set_calendar_type(GREGORIAN)
+   case ( 'JULIAN' )
+      call set_calendar_type(JULIAN)
+   case ( 'THIRTY_DAY_MONTHS' )
+      call set_calendar_type(THIRTY_DAY_MONTHS)
+   case DEFAULT
+      call set_calendar_type(NO_CALENDAR)
+   end select
+
+   fv3time = set_date(year,month,day,hour,min,sec)
+   Atm(mytile)%Time_init = fv3time
+   call diag_manager_init()
+   call fv_diag_init(Atm(mytile:mytile), Atm(mytile)%atmos_axes, fv3time, npx, npy, nlev, Atm(mytile)%flagstruct%p_ref)
 
 end subroutine dyn_init
 
@@ -661,17 +693,20 @@ subroutine dyn_run(dyn_state)
   use fv_sg_mod,              only: fv_subgrid_z
   use physconst,              only: thermodynamic_active_species_num, thermodynamic_active_species_idx_dycore, &
                                     thermodynamic_active_species_cp,thermodynamic_active_species_cv,dry_air_species_num
-  use time_manager,           only: get_step_size
+  use time_manager,           only: get_curr_date,get_step_size
+  use time_manager_mod,       only: time_type,set_date 
   use tracer_manager_mod,     only: get_tracer_index, NO_TRACER
 
   ! Arguments
   type (dyn_export_t), intent(inout) :: dyn_state
 
   ! Locals
-  integer :: psc,idim
-  integer :: w_diff, nt_dyn
-  type(fv_atmos_type), pointer         :: Atm(:)
-  integer :: is,isc,isd,ie,iec,ied,js,jsc,jsd,je,jec,jed
+  integer                          :: is,isc,isd,ie,iec,ied,js,jsc,jsd,je,jec,jed
+  integer                          :: psc,idim
+  integer                          :: w_diff, nt_dyn
+  integer                          :: year,month,day,hour,min,sec,tod
+  type(fv_atmos_type), pointer     :: Atm(:)
+  type (time_type)                 :: fv_time
 
   !---- Call FV dynamics -----
 
@@ -745,7 +780,13 @@ subroutine dyn_run(dyn_state)
 #endif
 
      if (ngrids > 1 .and. (psc < p_split .or. p_split < 0)) then
-        call twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir)
+        call get_curr_date(year,month,day,tod)
+        hour    = tod / 3600
+        min     = (tod - hour*3600) / 60
+        sec     = (tod - hour*3600 - min*60)
+        fv_time = set_date(year,month,day,hour,min,sec)
+        call mpp_sync()
+        call twoway_nesting(Atm, ngrids, grids_on_this_pe, zvir, fv_time, mytile)
      endif
 
   end do !p_split

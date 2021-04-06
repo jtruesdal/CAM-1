@@ -33,9 +33,9 @@ module dyn_grid
     use cam_grid_support, only: iMap
     use cam_logfile,      only: iulog
     use dimensions_mod,   only: npx, npy, ntiles
-    use fms_mod,          only: fms_init, write_version_number
+    use fms_mod,          only: fms_init, write_version_number, set_domain
     use fv_arrays_mod,    only: fv_atmos_type
-    use fv_control_mod,   only: ngrids,fv_init
+    use fv_control_mod,   only: ngrids,fv_control_init
     use fv_mp_mod,        only: mp_bcst
     use mpp_mod,          only: mpp_pe, mpp_root_pe
     use physconst,        only: rearth,pi
@@ -173,16 +173,17 @@ subroutine dyn_grid_init()
 
 !----- initialize FV dynamical core -----
 
-   call fv_init( Atm, dt_atmos_real, grids_on_this_pe, p_split)  ! allocates Atm components
+   call fv_control_init( Atm, dt_atmos_real, mytile, grids_on_this_pe, p_split)  ! allocates Atm components
 
-   do n=1,ngrids
-      if (grids_on_this_pe(n)) mytile = n
-   enddo
+!jt   do n=1,ngrids
+!jt      if (grids_on_this_pe(n)) mytile = n
+!jt   enddo
 
 !----- write version and namelist to log file -----
    call write_version_number ( version, tagname )
 
-   call switch_current_Atm(Atm(mytile))
+!!   call switch_current_Atm(Atm(mytile))
+   call set_domain(Atm(mytile)%domain)
 
 !!  set up dimensions_mod convenience variables.
 
@@ -193,7 +194,7 @@ subroutine dyn_grid_init()
    npx   = Atm(mytile)%flagstruct%npx
    npy   = Atm(mytile)%flagstruct%npy
    ntiles = Atm(mytile)%gridstruct%ntiles_g
-   tile = Atm(mytile)%tile
+   tile = Atm(mytile)%tile_of_mosaic
 
    if (Atm(mytile)%flagstruct%npz /= plev) then
       write(errmsg,*) 'FV3 dycore levels (npz),',Atm(mytile)%flagstruct%npz,' do not match model levels (plev)',plev
@@ -308,6 +309,7 @@ subroutine get_block_gcol_d(blockid, size, cdex)
     ie = Atm(mytile)%bd%ie
     js = Atm(mytile)%bd%js
     je = Atm(mytile)%bd%je
+    tile = Atm(mytile)%tile_of_mosaic
 
     if (.not. allocated(block_extents_g)) then
        npes=mpp_npes()
@@ -319,7 +321,7 @@ subroutine get_block_gcol_d(blockid, size, cdex)
        block_extents(2)=ie
        block_extents(3)=js
        block_extents(4)=je
-       block_extents(5)=Atm(mytile)%tile
+       block_extents(5)=tile
 
        call mpp_gather(block_extents,be_arrlen,rtmp,be_size)
        call mp_bcst(rtmp,be_arrlen*npes)
@@ -647,7 +649,7 @@ subroutine define_cam_grids(Atm)
   ied = Atm(mytile)%bd%ied
   jsd = Atm(mytile)%bd%jsd
   jed = Atm(mytile)%bd%jed
-  tile = Atm(mytile)%tile
+  tile = Atm(mytile)%tile_of_mosaic
 
   allocate(area_ffsl((ie-is+1)*(je-js+1)))
   allocate(grid_ew(isd:ied+1,jsd:jed,2))
@@ -1082,7 +1084,7 @@ subroutine create_global(is,ie,js,je,arr_d, global_out)
   real(r8), allocatable           :: globarr_tmp(:,:,:)
   !----------------------------------------------------------------------------
 
-  tile = Atm(mytile)%tile
+  tile = Atm(mytile)%tile_of_mosaic
 
   if (.not. allocated(globarr_tmp)) then
      if (masterproc) write(iulog, *) 'INFO: Non-scalable action: Allocating global blocks in FV3 dycore.(globarr_tmp)'

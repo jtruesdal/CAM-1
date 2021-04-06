@@ -446,7 +446,7 @@ subroutine cam_final( cam_out, cam_in )
    ! processes do not get mixed up with the "END OF MODEL RUN" message printed
    ! by masterproc below.  The test-model script searches for this message in the
    ! output log to figure out if CAM completed successfully.
-   call shr_sys_flush( 0 )       ! Flush all output to standard error
+!jt   call shr_sys_flush( 0 )       ! Flush all output to standard error
    call shr_sys_flush( iulog )   ! Flush all output to the CAM log file
 
    if (masterproc) then
