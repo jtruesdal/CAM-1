@@ -41,6 +41,15 @@ F90      := $(FC)
 C90      := $(CC)
 F90FLAGS := $(FREEFLAGS) $(FFLAGS)
 
+# Additional GNU flags needed for FV3
+ifeq ($(strip $(COMPILER)),gnu)
+  F90FLAGS += -fcray-pointer
+  # also, below we inhibit all GNU compiler warnings for FMS because (1) we have no control
+  # over FMS, and (2) some GNU warning msgs contain characters that require encoding/decoding.
+  #  F90FLAGS += -w
+  #  CFLAGS += -w
+endif
+
 OBJS = a2b_edge.o boundary.o dyn_core.o external_ic.o \
        external_sst.o fv_arrays.o fv_cmp.o fv_control.o \
        fv_diagnostics.o fv_dynamics.o fv_eta.o fv_fill.o \
@@ -117,7 +126,7 @@ fv_surf_map.o : fv_surf_map.F90 fv_arrays_mod.mod fv_grid_utils_mod.mod fv_timin
 fv_timing.o : fv_timing.F90 fv_mp_mod.mod   
 fv_tracer2d.o : fv_tracer2d.F90 fv_arrays_mod.mod fv_regional_mod.mod boundary_mod.mod fv_timing_mod.mod fv_mp_mod.mod tp_core_mod.mod   
 fv_treat_da_inc.o : fv_treat_da_inc.F90 fv_arrays_mod.mod sim_nc_mod.mod fv_grid_utils_mod.mod fv_mp_mod.mod   
-fv_update_phys.o : fv_update_phys.F90 fv_mapz_mod.mod fv_eta_mod.mod fv_arrays_mod.mod boundary_mod.mod fv_grid_utils_mod.mod fv_diagnostics_mod.mod fv_timing_mod.mod fv_nwp_nudge_mod.mod fv_mp_mod.mod   
+fv_update_phys.o : fv_update_phys.F90 fv_mapz_mod.mod fv_eta_mod.mod fv_arrays_mod.mod boundary_mod.mod fv_grid_utils_mod.mod fv_diagnostics_mod.mod fv_timing_mod.mod fv_nwp_nudge_mod.mod fv_mp_mod.mod fv_nesting_mod.mod
 gfdl_cloud_microphys.o : gfdl_cloud_microphys.F90 module_mp_radar.mod   
 init_hydro.o : init_hydro.F90 fv_arrays_mod.mod fv_grid_utils_mod.mod fv_mp_mod.mod   
 module_mp_radar.o : module_mp_radar.F90    
