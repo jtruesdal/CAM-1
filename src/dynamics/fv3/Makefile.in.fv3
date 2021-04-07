@@ -108,7 +108,7 @@ external_sst.o : external_sst.F90
 fv_arrays.o : fv_arrays.F90    
 fv_cmp.o : fv_cmp.F90 fv_arrays_mod.mod gfdl_cloud_microphys_mod.mod fv_mp_mod.mod   
 fv_control.o : fv_control.F90 fv_io_mod.mod fv_eta_mod.mod fv_arrays_mod.mod fv_grid_utils_mod.mod fv_diagnostics_mod.mod fv_timing_mod.mod fv_grid_tools_mod.mod fv_mp_mod.mod fv_restart_mod.mod test_cases_mod.mod   
-fv_diagnostics.o : fv_diagnostics.F90 fv_mapz_mod.mod fv_eta_mod.mod fv_arrays_mod.mod fv_sg_mod.mod fv_surf_map_mod.mod fv_grid_utils_mod.mod a2b_edge_mod.mod gfdl_cloud_microphys_mod.mod fv_mp_mod.mod   
+fv_diagnostics.o : fv_diagnostics.F90 fv_mapz_mod.mod fv_eta_mod.mod fv_arrays_mod.mod fv_sg_mod.mod fv_surf_map_mod.mod fv_grid_utils_mod.mod a2b_edge_mod.mod gfdl_cloud_microphys_mod.mod fv_mp_mod.mod
 fv_dynamics.o : fv_dynamics.F90 fv_mapz_mod.mod fv_arrays_mod.mod fv_regional_mod.mod fv_sg_mod.mod boundary_mod.mod fv_grid_utils_mod.mod fv_diagnostics_mod.mod fv_timing_mod.mod fv_fill_mod.mod dyn_core_mod.mod fv_nesting_mod.mod fv_tracer2d_mod.mod fv_nwp_nudge_mod.mod fv_mp_mod.mod   
 fv_eta.o : fv_eta.F90 fv_mp_mod.mod   
 fv_fill.o : fv_fill.F90    

@@ -218,8 +218,7 @@ subroutine dyn_readnl(nlfilename)
         end if
      end if
      close(unitn)
-  end if
-
+  endif
   ! Broadcast namelist values to all PEs
   call MPI_bcast(fv3_npes, 1, mpi_integer, masterprocid, mpicom, ierr)
   call MPI_bcast(fv3_scale_ttend, 1, mpi_logical, masterprocid, mpicom, ierr)
@@ -305,6 +304,13 @@ subroutine dyn_readnl(nlfilename)
   ! This could be replaced by also by writing to the internal namelist file
 
   if (masterproc) then
+
+     ! write the file diag_table for the fv3 diag_manager
+     ! overwrite file if it exists.
+     open( newunit=unito, file='diag_table', status='replace' )
+     write(unito,'(a)')'20161003.00Z.Cxx.64bit.non-mono'
+     write(unito,'(a)')'2016 10 03 00 0 0'
+     close(unito)
 
      write(iulog,*) 'Creating fv3 input.nml file from atm_in fv3_xxx namelist parameters'
      ! Read the namelist (main_nml)
@@ -1770,8 +1776,6 @@ end subroutine read_inidat
 
     if ( hist_fld_active(mr_name).or.hist_fld_active(mo_name)) then
 
-
-
       mr_cnst = rearth**3/gravit
       mo_cnst = omega*rearth**4/gravit
       mr    = 0.0_r8
@@ -1947,7 +1951,7 @@ end subroutine write_dyn_var
 
 subroutine set_dry_mass(atm,fixed_global_ave_dry_ps)
 
-  !----------------------------------------------------------------------------
+!----------------------------------------------------------------------------
 
   use constituents,          only: pcnst, qmin
   use cam_logfile,           only: iulog
