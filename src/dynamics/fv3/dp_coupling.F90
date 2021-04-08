@@ -1,35 +1,33 @@
 module dp_coupling
 
-!-------------------------------------------------------------------------------
-! dynamics - physics coupling module
-!-------------------------------------------------------------------------------
+  !-------------------------------------------------------------------------------
+  ! dynamics - physics coupling module
+  !-------------------------------------------------------------------------------
 
-use cam_abortutils,    only: endrun
-use cam_logfile,       only: iulog
-use constituents,      only: pcnst
-use dimensions_mod,    only: npx,npy,nlev, &
-                             cnst_name_ffsl, cnst_longname_ffsl,fv3_lcp_moist,fv3_lcv_moist, &
-                             qsize_tracer_idx_cam2dyn,fv3_scale_ttend
-use dyn_comp,          only: dyn_export_t, dyn_import_t
-use dyn_grid,          only: get_gcol_block_d,mytile
-use fv_grid_utils_mod, only: g_sum
-use hycoef,            only: hyam, hybm, hyai, hybi, ps0
-use mpp_domains_mod,   only: mpp_update_domains, domain2D, DGRID_NE
-use perf_mod,          only: t_startf, t_stopf, t_barrierf
-use physconst,         only: cpair, gravit, rair, zvir, cappa, rairv
-use phys_grid,         only: get_ncols_p, get_gcol_all_p, block_to_chunk_send_pters, &
-                             transpose_block_to_chunk, block_to_chunk_recv_pters, &
-                             chunk_to_block_send_pters, transpose_chunk_to_block, &
-                             chunk_to_block_recv_pters
-use physics_types,     only: physics_state, physics_tend
-use ppgrid,            only: begchunk, endchunk, pcols, pver, pverp
-use shr_kind_mod,      only: r8=>shr_kind_r8, i8 => shr_kind_i8
-use spmd_dyn,          only: local_dp_map, block_buf_nrecs, chunk_buf_nrecs
-use spmd_utils,        only: mpicom, iam, npes,masterproc
+  use cam_abortutils,    only: endrun
+  use cam_logfile,       only: iulog
+  use constituents,      only: pcnst
+  use dimensions_mod,    only: npx,npy,nlev, &
+                               cnst_name_ffsl, cnst_longname_ffsl,fv3_lcp_moist,fv3_lcv_moist, &
+                               qsize_tracer_idx_cam2dyn,fv3_scale_ttend
+  use dyn_comp,          only: dyn_export_t, dyn_import_t
+  use dyn_grid,          only: mytile
+  use fv_grid_utils_mod, only: g_sum
+  use hycoef,            only: hyam, hybm, hyai, hybi, ps0
+  use mpp_domains_mod,   only: mpp_update_domains, domain2D, DGRID_NE
+  use perf_mod,          only: t_startf, t_stopf
+  use phys_grid,         only: get_dyn_col_p, columns_on_task, get_chunk_info_p
+  use phys_grid,         only: get_ncols_p
+  use physconst,         only: cpair, gravit, zvir, cappa, rairv
+  use physics_types,     only: physics_state, physics_tend
+  use ppgrid,            only: begchunk, endchunk, pcols, pver, pverp
+  use shr_kind_mod,      only: r8=>shr_kind_r8, i8 => shr_kind_i8
+  use spmd_dyn,          only: local_dp_map
+  use spmd_utils,        only: masterproc
 
-implicit none
-private
-public :: d_p_coupling, p_d_coupling
+  implicit none
+  private
+  public :: d_p_coupling, p_d_coupling
 
 !=======================================================================
 contains
@@ -42,10 +40,11 @@ subroutine d_p_coupling(phys_state, phys_tend, pbuf2d, dyn_out)
   ! wet air mass.
 
 
-  use cam_abortutils,     only: endrun
-  use fv_arrays_mod,      only: fv_atmos_type
-  use fv_grid_utils_mod,  only: cubed_to_latlon
-  use physics_buffer,     only: physics_buffer_desc
+  ! use dyn_comp,               only: frontgf_idx, frontga_idx
+  use fv_arrays_mod,          only: fv_atmos_type
+!!$  use gravity_waves_sources,  only: gws_src_fnct
+!!$  use phys_control,           only: use_gw_front, use_gw_front_igw
+  use physics_buffer,         only: physics_buffer_desc, pbuf_get_chunk
 
   ! arguments
   type (dyn_export_t),  intent(inout)                               :: dyn_out    ! dynamics export
@@ -55,33 +54,41 @@ subroutine d_p_coupling(phys_state, phys_tend, pbuf2d, dyn_out)
 
   ! LOCAL VARIABLES
 
-  integer :: ib                     ! indices over elements
-  integer :: ioff
+  integer :: i, j, k, n
+  integer :: is,ie,js,je            ! indices into fv3 block structure
   integer :: lchnk, icol, ilyr      ! indices over chunks, columns, layers
-  integer :: m, m_ffsl, n, i, j, k
+  integer :: ncols
+  integer :: col_ind, blk_num, blk_ind(1), m, m_cnst
+  integer :: tsize                  ! amount of data per grid point passed to physics
+  integer :: m_ffsl                 ! constituent index for ffsl grid
 
-  integer :: cpter(pcols,              0:pver)    ! offsets into chunk buffer for unpacking data
-
-  integer :: pgcols(pcols), idmb1(1), idmb2(1), idmb3(1)
-  integer :: tsize                 ! amount of data per grid point passed to physics
   type (fv_atmos_type),  pointer :: Atm(:)
 
-  integer                                   :: is,ie,js,je
-  integer                                   :: ncols
-
   ! LOCAL Allocatables
-  integer, allocatable,  dimension(:,:)     :: bpter    !((ie-is+1)*(je-js+1),0:pver) ! packing data block buffer offset
-  real(r8), allocatable, dimension(:)       :: bbuffer, cbuffer ! transpose buffers
-  real(r8), allocatable, dimension(:,:)     :: phis_tmp !((ie-is+1)*(je-js+1),     1) ! temporary array to hold phis
-  real(r8), allocatable, dimension(:,:)     :: ps_tmp   !((ie-is+1)*(je-js+1),     1) ! temporary array to hold ps
-  real(r8), allocatable, dimension(:,:,:)   :: T_tmp    !((ie-is+1)*(je-js+1),pver,1) ! temporary array to hold T
-  real(r8), allocatable, dimension(:,:,:)   :: omega_tmp!((ie-is+1)*(je-js+1),pver,1) ! temporary array to hold omega
-  real(r8), allocatable, dimension(:,:,:)   :: pdel_tmp !((ie-is+1)*(je-js+1),pver,1) ! temporary array to hold pdel
-  real(r8), allocatable, dimension(:,:,:)   :: u_tmp !((ie-is+1)*(je-js+1),pver,1) ! temp array to hold u
-  real(r8), allocatable, dimension(:,:,:)   :: v_tmp !((ie-is+1)*(je-js+1),pver,1) ! temp array to hold v
-  real(r8), allocatable, dimension(:,:,:,:) :: q_tmp !((ie-is+1)*(je-js+1),pver,pcnst,1) ! temp to hold advected constituents
+  real(r8), allocatable, dimension(:)       :: phis_tmp !((ie-is+1)*(je-js+1)) ! temporary array to hold phis
+  real(r8), allocatable, dimension(:)       :: ps_tmp   !((ie-is+1)*(je-js+1)) ! temporary array to hold ps
+  real(r8), allocatable, dimension(:,:)     :: T_tmp    !((ie-is+1)*(je-js+1),pver) ! temporary array to hold T
+  real(r8), allocatable, dimension(:,:)     :: omega_tmp!((ie-is+1)*(je-js+1),pver) ! temporary array to hold omega
+  real(r8), allocatable, dimension(:,:)     :: pdel_tmp !((ie-is+1)*(je-js+1),pver) ! temporary array to hold pdel
+  real(r8), allocatable, dimension(:,:)     :: u_tmp !((ie-is+1)*(je-js+1),pver) ! temp array to hold u
+  real(r8), allocatable, dimension(:,:)     :: v_tmp !((ie-is+1)*(je-js+1),pver) ! temp array to hold v
+  real(r8), allocatable, dimension(:,:,:)   :: q_tmp !((ie-is+1)*(je-js+1),pver,pcnst) ! temp to hold advected constituents
 
+  ! Frontogenesis
+  real (kind=r8),  allocatable :: frontgf(:,:)      ! temp arrays to hold frontogenesis
+  real (kind=r8),  allocatable :: frontga(:,:)      ! function (frontgf) and angle (frontga)
+  real (kind=r8),  allocatable :: frontgf_phys(:,:,:)
+  real (kind=r8),  allocatable :: frontga_phys(:,:,:)
+  ! Pointers to pbuf
+  real (kind=r8),  pointer     :: pbuf_frontgf(:,:)
+  real (kind=r8),  pointer     :: pbuf_frontga(:,:)
+
+  type(physics_buffer_desc), pointer :: pbuf_chnk(:)
   !-----------------------------------------------------------------------
+
+  if (.not. local_dp_map) then
+     call endrun('d_p_coupling: Weak scaling does not support load balancing')
+  end if
 
   Atm=>dyn_out%atm
 
@@ -90,15 +97,19 @@ subroutine d_p_coupling(phys_state, phys_tend, pbuf2d, dyn_out)
   js = Atm(mytile)%bd%js
   je = Atm(mytile)%bd%je
 
+  nullify(pbuf_chnk)
+  nullify(pbuf_frontgf)
+  nullify(pbuf_frontga)
+
   ! Allocate temporary arrays to hold data for physics decomposition
-  allocate(ps_tmp   ((ie-is+1)*(je-js+1),           1))
-  allocate(phis_tmp ((ie-is+1)*(je-js+1),           1))
-  allocate(T_tmp    ((ie-is+1)*(je-js+1),pver,      1))
-  allocate(u_tmp    ((ie-is+1)*(je-js+1),pver,      1))
-  allocate(v_tmp    ((ie-is+1)*(je-js+1),pver,      1))
-  allocate(omega_tmp((ie-is+1)*(je-js+1),pver,      1))
-  allocate(pdel_tmp ((ie-is+1)*(je-js+1),pver,      1))
-  allocate(Q_tmp    ((ie-is+1)*(je-js+1),pver,pcnst, 1))
+  allocate(ps_tmp   ((ie-is+1)*(je-js+1)))
+  allocate(phis_tmp ((ie-is+1)*(je-js+1)))
+  allocate(T_tmp    ((ie-is+1)*(je-js+1),pver))
+  allocate(u_tmp    ((ie-is+1)*(je-js+1),pver))
+  allocate(v_tmp    ((ie-is+1)*(je-js+1),pver))
+  allocate(omega_tmp((ie-is+1)*(je-js+1),pver))
+  allocate(pdel_tmp ((ie-is+1)*(je-js+1),pver))
+  allocate(Q_tmp    ((ie-is+1)*(je-js+1),pver,pcnst))
 
   ps_tmp   = 0._r8
   phis_tmp = 0._r8
@@ -109,23 +120,38 @@ subroutine d_p_coupling(phys_state, phys_tend, pbuf2d, dyn_out)
   pdel_tmp = 0._r8
   Q_tmp    = 0._r8
 
+!!$  if (use_gw_front .or. use_gw_front_igw) then
+!!$     allocate(frontgf(nphys_pts,pver), stat=ierr)
+!!$     if (ierr /= 0) call endrun("dp_coupling: Allocate of frontgf failed.")
+!!$     allocate(frontga(nphys_pts,pver), stat=ierr)
+!!$     if (ierr /= 0) call endrun("dp_coupling: Allocate of frontga failed.")
+!!$     frontgf(:,:) = 0._r8
+!!$     frontga(:,:) = 0._r8
+!!$  end if
+
+!!$  ! q_prev is for saving the tracer fields for calculating tendencies
+!!$  if (.not. allocated(q_prev)) then
+!!$     allocate(q_prev(pcols,pver,pcnst,begchunk:endchunk))
+!!$  end if
+!!$  q_prev = 0.0_R8
+
   n = 1
   do j = js, je
      do i = is, ie
-        ps_tmp  (n, 1) = Atm(mytile)%ps  (i, j)
-        phis_tmp(n, 1) = Atm(mytile)%phis(i, j)
+        ps_tmp  (n) = Atm(mytile)%ps  (i, j)
+        phis_tmp(n) = Atm(mytile)%phis(i, j)
         do k = 1, pver
-           T_tmp    (n, k, 1) = Atm(mytile)%pt  (i, j, k)
-           u_tmp    (n, k, 1) = Atm(mytile)%ua (i, j, k)
-           v_tmp    (n, k, 1) = Atm(mytile)%va (i, j, k)
-           omega_tmp(n, k, 1) = Atm(mytile)%omga(i, j, k)
-           pdel_tmp (n, k, 1) = Atm(mytile)%delp(i, j, k)
+           T_tmp    (n, k) = Atm(mytile)%pt  (i, j, k)
+           u_tmp    (n, k) = Atm(mytile)%ua (i, j, k)
+           v_tmp    (n, k) = Atm(mytile)%va (i, j, k)
+           omega_tmp(n, k) = Atm(mytile)%omga(i, j, k)
+           pdel_tmp (n, k) = Atm(mytile)%delp(i, j, k)
            !
            ! The fv3 constituent array may be in a different order than the cam array, remap here.
            !
            do m = 1, pcnst
               m_ffsl=qsize_tracer_idx_cam2dyn(m)
-              Q_tmp(n, k, m, 1) = Atm(mytile)%q(i, j, k, m_ffsl)
+              Q_tmp(n, k, m) = Atm(mytile)%q(i, j, k, m_ffsl)
            end do
         end do
         n = n + 1
@@ -133,92 +159,60 @@ subroutine d_p_coupling(phys_state, phys_tend, pbuf2d, dyn_out)
   end do
 
   call t_startf('dpcopy')
-  if (local_dp_map) then
-
-     !$omp parallel do private (lchnk, ncols, pgcols, icol, idmb1, idmb2, idmb3, ib, ioff, ilyr, m)
-     do lchnk = begchunk, endchunk
-        ncols = get_ncols_p(lchnk)
-        call get_gcol_all_p(lchnk, pcols, pgcols)
-        do icol = 1, ncols
-           call get_gcol_block_d(pgcols(icol), 1, idmb1, idmb2, idmb3)
-           ib   = idmb3(1)
-           ioff = idmb2(1)
-           phys_state(lchnk)%ps(icol)   = ps_tmp  (ioff,ib)
-           phys_state(lchnk)%phis(icol) = phis_tmp(ioff,ib)
-           do ilyr = 1, pver
-              phys_state(lchnk)%t    (icol,ilyr) = T_tmp    (ioff,ilyr,ib)
-              phys_state(lchnk)%u    (icol,ilyr) = u_tmp    (ioff,ilyr,ib)
-              phys_state(lchnk)%v    (icol,ilyr) = v_tmp    (ioff,ilyr,ib)
-              phys_state(lchnk)%omega(icol,ilyr) = omega_tmp(ioff,ilyr,ib)
-              phys_state(lchnk)%pdel(icol,ilyr)  = pdel_tmp (ioff,ilyr,ib)
-              do m = 1, pcnst
-                 phys_state(lchnk)%q(icol,ilyr,m) = Q_tmp(ioff,ilyr,m,ib)
-              end do
-           end do
-        end do
-
-     end do
-
-
-  else  ! .not. local_dp_map
-
-     tsize = 5 + pcnst
-     ib = 1
-
-     allocate(bbuffer(tsize*block_buf_nrecs))
-     allocate(cbuffer(tsize*chunk_buf_nrecs))
-     allocate(bpter((ie-is+1)*(je-js+1),0:pver))
-
-     if (iam < npes) then
-        call block_to_chunk_send_pters(iam+1, (ie-is+1)*(je-js+1), pver+1, tsize, bpter)
-        do icol = 1, (ie-is+1)*(je-js+1)
-           bbuffer(bpter(icol,0)+2:bpter(icol,0)+tsize-1) = 0.0_r8
-           bbuffer(bpter(icol,0))   = ps_tmp  (icol,ib)
-           bbuffer(bpter(icol,0)+1) = phis_tmp(icol,ib)
-           do ilyr = 1, pver
-              bbuffer(bpter(icol,ilyr))   = T_tmp(icol,ilyr,ib)
-              bbuffer(bpter(icol,ilyr)+1) = u_tmp(icol,ilyr,ib)
-              bbuffer(bpter(icol,ilyr)+2) = v_tmp(icol,ilyr,ib)
-              bbuffer(bpter(icol,ilyr)+3) = omega_tmp(icol,ilyr,ib)
-              bbuffer(bpter(icol,ilyr)+4) = pdel_tmp (icol,ilyr,ib)
-              do m = 1, pcnst
-                 bbuffer(bpter(icol,ilyr)+tsize-pcnst-1+m) = Q_tmp(icol,ilyr,m,ib)
-              end do
-           end do
-        end do
-     else
-        bbuffer(:) = 0._r8
-     end if
-
-     call t_barrierf ('sync_blk_to_chk', mpicom)
-     call t_startf ('block_to_chunk')
-     call transpose_block_to_chunk(tsize, bbuffer, cbuffer)
-     call t_stopf  ('block_to_chunk')
-
-     do lchnk = begchunk,endchunk
-        ncols = phys_state(lchnk)%ncol
-        call block_to_chunk_recv_pters(lchnk, pcols, pver+1, tsize, cpter)
-        do icol = 1, ncols
-           phys_state(lchnk)%ps   (icol) = cbuffer(cpter(icol,0))
-           phys_state(lchnk)%phis (icol) = cbuffer(cpter(icol,0)+1)
-           do ilyr = 1, pver
-              phys_state(lchnk)%t     (icol,ilyr)   = cbuffer(cpter(icol,ilyr))
-              phys_state(lchnk)%u     (icol,ilyr)   = cbuffer(cpter(icol,ilyr)+1)
-              phys_state(lchnk)%v     (icol,ilyr)   = cbuffer(cpter(icol,ilyr)+2)
-              phys_state(lchnk)%omega (icol,ilyr)   = cbuffer(cpter(icol,ilyr)+3)
-              phys_state(lchnk)%pdel  (icol,ilyr)   = cbuffer(cpter(icol,ilyr)+4)
-              do m = 1, pcnst
-                 phys_state(lchnk)%q (icol,ilyr,m) = cbuffer(cpter(icol,ilyr)+tsize-pcnst-1+m)
-              end do
-           end do
+!!$  if (use_gw_front .or. use_gw_front_igw) then
+!!$     allocate(frontgf_phys(pcols, pver, begchunk:endchunk))
+!!$     allocate(frontga_phys(pcols, pver, begchunk:endchunk))
+!!$  end if
+  !$omp parallel do num_threads(max_num_threads) private (col_ind, lchnk, icol, blk_ind, ilyr, m)
+  do col_ind = 1, columns_on_task
+     call get_dyn_col_p(col_ind, blk_num, blk_ind)
+     call get_chunk_info_p(col_ind, lchnk, icol)
+     phys_state(lchnk)%ps(icol)   = ps_tmp(blk_ind(1))
+     phys_state(lchnk)%phis(icol) = phis_tmp(blk_ind(1))
+     do ilyr = 1, pver
+        phys_state(lchnk)%pdel(icol, ilyr)  = pdel_tmp(blk_ind(1), ilyr)
+        phys_state(lchnk)%t(icol, ilyr)     = T_tmp(blk_ind(1), ilyr)
+        phys_state(lchnk)%u(icol, ilyr)     = u_tmp(blk_ind(1), ilyr)
+        phys_state(lchnk)%v(icol, ilyr)     = v_tmp(blk_ind(1), ilyr)
+        phys_state(lchnk)%omega(icol, ilyr) = omega_tmp(blk_ind(1), ilyr)
+        pbuf_chnk => pbuf_get_chunk(pbuf2d, lchnk)
+!!$        if (use_gw_front .or. use_gw_front_igw) then
+!!$           call pbuf_get_field(pbuf_chnk, frontgf_idx, pbuf_frontgf)
+!!$           call pbuf_get_field(pbuf_chnk, frontga_idx, pbuf_frontga)
+!!$           frontgf_phys(icol, ilyr, lchnk) = frontgf(blk_ind(1), ilyr)
+!!$           frontga_phys(icol, ilyr, lchnk) = frontga(blk_ind(1), ilyr)
+!!$        end if
+        do m = 1, pcnst
+           phys_state(lchnk)%q(icol,ilyr,m) = Q_tmp(blk_ind(1),ilyr,m)
         end do
      end do
+  end do
+!!$  if (use_gw_front .or. use_gw_front_igw) then
+!!$     !$omp parallel do num_threads(max_num_threads) private (lchnk, ncols, icol, ilyr, pbuf_chnk, pbuf_frontgf, pbuf_frontga)
+!!$     do lchnk = begchunk, endchunk
+!!$        ncols = get_ncols_p(lchnk)
+!!$        pbuf_chnk => pbuf_get_chunk(pbuf2d, lchnk)
+!!$        call pbuf_get_field(pbuf_chnk, frontgf_idx, pbuf_frontgf)
+!!$        call pbuf_get_field(pbuf_chnk, frontga_idx, pbuf_frontga)
+!!$        do icol = 1, ncols
+!!$           do ilyr = 1, pver
+!!$              pbuf_frontgf(icol, ilyr) = frontgf_phys(icol, ilyr, lchnk)
+!!$              pbuf_frontga(icol, ilyr) = frontga_phys(icol, ilyr, lchnk)
+!!$           end do
+!!$        end do
+!!$     end do
+!!$     deallocate(frontgf_phys)
+!!$     deallocate(frontga_phys)
+!!$  end if
 
-     deallocate( bbuffer )
-     deallocate( cbuffer )
-     deallocate( bpter )
+!!$  ! Save the tracer fields input to physics package for calculating tendencies
+!!$  ! The mixing ratios are all dry at this point.
+!!$  do lchnk = begchunk, endchunk
+!!$     ncols = phys_state(lchnk)%ncol
+!!$     q_prev(1:ncols,1:pver,1:pcnst,lchnk) = phys_state(lchnk)%q(1:ncols,1:pver,1:pcnst)
+!!$  end do
 
-  end if
+  call t_stopf('dpcopy')
 
   deallocate(ps_tmp   )
   deallocate(phis_tmp )
@@ -228,8 +222,6 @@ subroutine d_p_coupling(phys_state, phys_tend, pbuf2d, dyn_out)
   deallocate(omega_tmp)
   deallocate(pdel_tmp )
   deallocate(Q_tmp    )
-
-  call t_stopf('dpcopy')
 
   ! derive the physics state from the dynamics state converting to proper vapor loading
   ! and setting dry mixing ratio variables based on cnst_type - no need to call wet_to_dry
@@ -255,7 +247,7 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
   use fv_grid_utils_mod,      only: cubed_to_latlon
   use physconst,              only: thermodynamic_active_species_num,thermodynamic_active_species_idx_dycore
   use physconst,              only: thermodynamic_active_species_cp,thermodynamic_active_species_cv,dry_air_species_num
-  use physics_types,          only: set_state_pdry
+  use phys_grid,              only: get_dyn_col_p, columns_on_task, get_chunk_info_p
   use time_manager,           only: get_step_size
 
   ! arguments
@@ -265,20 +257,14 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
 
   ! LOCAL VARIABLES
 
-  integer :: cpter(pcols,0:pver)    ! offsets into chunk buffer for unpacking data
-  integer :: ib                     ! indices over elements
-  integer :: idim
-  integer :: ioff
-  integer :: is,isd,ie,ied,js,jsd,je,jed
-  integer :: lchnk, icol, ilyr      ! indices over chunks, columns, layers
-  integer :: m, n, i, j, k,m_ffsl,nq
-  integer :: ncols
-  integer :: pgcols(pcols), idmb1(1), idmb2(1), idmb3(1)
-  integer :: tsize                 ! amount of data per grid point passed to physics
-  integer :: num_wet_species       ! total number of wet species (first tracers in FV3 tracer array)
-
-  integer, allocatable, dimension(:,:) :: bpter   !((ie-is+1)*(je-js+1),0:pver)    ! packing data block buffer offsets
-  real(r8),  allocatable, dimension(:) :: bbuffer, cbuffer ! transpose buffers
+  integer                              :: blk_ind(1)             ! element offset
+  integer                              :: col_ind, blk_num       ! index over columns, block number
+  integer                              :: i, j, k,m, m_ffsl,n,nq
+  integer                              :: idim
+  integer                              :: is,isd,ie,ied,js,jsd,je,jed
+  integer                              :: lchnk, icol, ilyr      ! indices over chunks, columns, layers
+  integer                              :: ncols
+  integer                              :: num_wet_species       ! total number of wet species (first tracers in FV3 tracer array)
 
   real (r8)                            :: dt
   real (r8)                            :: fv3_totwatermass, fv3_airmass
@@ -288,20 +274,24 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
   type (fv_atmos_type),  pointer :: Atm(:)
 
   real(r8),  allocatable, dimension(:,:,:)   :: delpdry       ! temporary to hold tendencies
-  real(r8),  allocatable, dimension(:,:,:)   :: pdel_tmp      ! temporary to hold
-  real(r8),  allocatable, dimension(:,:,:)   :: pdeldry_tmp   ! temporary to hold
+  real(r8),  allocatable, dimension(:,:)   :: pdel_tmp      ! temporary to hold
+  real(r8),  allocatable, dimension(:,:)   :: pdeldry_tmp   ! temporary to hold
   real(r8),  allocatable, dimension(:,:,:)   :: t_dt          ! temporary to hold tendencies
-  real(r8),  allocatable, dimension(:,:,:)   :: t_dt_tmp      ! temporary to hold tendencies
+  real(r8),  allocatable, dimension(:,:)   :: t_dt_tmp      ! temporary to hold tendencies
   real(r8),  allocatable, dimension(:,:,:)   :: t_tendadj     ! temporary array to temperature tendency adjustment
   real(r8),  allocatable, dimension(:,:,:)   :: u_dt          ! temporary to hold tendencies
-  real(r8),  allocatable, dimension(:,:,:)   :: u_dt_tmp      ! temporary to hold tendencies
-  real(r8),  allocatable, dimension(:,:,:)   :: u_tmp         ! temporary array to hold u and v
+  real(r8),  allocatable, dimension(:,:)   :: u_dt_tmp      ! temporary to hold tendencies
+  real(r8),  allocatable, dimension(:,:)   :: u_tmp         ! temporary array to hold u and v
   real(r8),  allocatable, dimension(:,:,:)   :: v_dt          ! temporary to hold tendencies
-  real(r8),  allocatable, dimension(:,:,:)   :: v_dt_tmp      ! temporary to hold tendencies
-  real(r8),  allocatable, dimension(:,:,:)   :: v_tmp         ! temporary array to hold u and v
-  real(r8),  allocatable, dimension(:,:,:,:) :: q_tmp         ! temporary to hold
+  real(r8),  allocatable, dimension(:,:)   :: v_dt_tmp      ! temporary to hold tendencies
+  real(r8),  allocatable, dimension(:,:)   :: v_tmp         ! temporary array to hold u and v
+  real(r8),  allocatable, dimension(:,:,:) :: q_tmp         ! temporary to hold
 
   !-----------------------------------------------------------------------
+
+  if (.not. local_dp_map) then
+     call endrun('p_d_coupling: Weak scaling does not support load balancing')
+  end if
 
   Atm=>dyn_in%atm
 
@@ -316,143 +306,65 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
 
   call set_domain ( Atm(mytile)%domain )
 
-  allocate(delpdry(isd:ied,jsd:jed,nlev))
-  allocate(t_dt_tmp((ie-is+1)*(je-js+1),pver,1))
-  allocate(u_dt_tmp((ie-is+1)*(je-js+1),pver,1))
-  allocate(v_dt_tmp((ie-is+1)*(je-js+1),pver,1))
-  allocate(pdel_tmp((ie-is+1)*(je-js+1),pver,1))
-  allocate(pdeldry_tmp((ie-is+1)*(je-js+1),pver,1))
-  allocate(U_tmp((ie-is+1)*(je-js+1),pver,1))
-  allocate(V_tmp((ie-is+1)*(je-js+1),pver,1))
-  allocate(Q_tmp((ie-is+1)*(je-js+1),pver,pcnst,1))
-  allocate(u_dt(isd:ied,jsd:jed,nlev))
-  allocate(v_dt(isd:ied,jsd:jed,nlev))
-  allocate(t_dt(is:ie,js:je,nlev))
-  allocate(t_tendadj(is:ie,js:je,nlev))
+  allocate(delpdry(isd:ied,jsd:jed,nlev))            ; delpdry = 0._r8
+  allocate(t_dt_tmp((ie-is+1)*(je-js+1),pver))       ; t_dt_tmp = 0._r8
+  allocate(u_dt_tmp((ie-is+1)*(je-js+1),pver))       ; u_dt_tmp = 0._r8
+  allocate(v_dt_tmp((ie-is+1)*(je-js+1),pver))       ; v_dt_tmp = 0._r8
+  allocate(pdel_tmp((ie-is+1)*(je-js+1),pver))       ; pdel_tmp = 0._r8
+  allocate(pdeldry_tmp((ie-is+1)*(je-js+1),pver))    ; pdeldry_tmp = 0._r8
+  allocate(U_tmp((ie-is+1)*(je-js+1),pver))          ; U_tmp = 0._r8
+  allocate(V_tmp((ie-is+1)*(je-js+1),pver))          ; V_tmp = 0._r8
+  allocate(Q_tmp((ie-is+1)*(je-js+1),pver,pcnst))    ; Q_tmp = 0._r8
+  allocate(u_dt(isd:ied,jsd:jed,nlev))               ; u_dt = 0._r8
+  allocate(v_dt(isd:ied,jsd:jed,nlev))               ; v_dt = 0._r8
+  allocate(t_dt(is:ie,js:je,nlev))                   ; t_dt = 0._r8
+  allocate(t_tendadj(is:ie,js:je,nlev))              ; t_tendadj = 0._r8
 
   Atm=>dyn_in%atm
 
-  if (local_dp_map) then
-!$omp parallel do private (lchnk, ncols, pgcols, icol, idmb1, idmb2, idmb3, ib, ioff, ilyr, m)
-     do lchnk = begchunk, endchunk
-        ncols = get_ncols_p(lchnk)
-        call get_gcol_all_p(lchnk, pcols, pgcols)
-        call set_state_pdry(phys_state(lchnk)) ! First get dry pressure to use for this timestep
-        do icol = 1, ncols
-           call get_gcol_block_d(pgcols(icol), 1, idmb1, idmb2, idmb3)
-           ib   = idmb3(1)
-           ioff = idmb2(1)
-           do ilyr = 1, pver
-              t_dt_tmp(ioff,ilyr,ib) = phys_tend(lchnk)%dtdt(icol,ilyr)
-              u_tmp(ioff,ilyr,ib) = phys_state(lchnk)%u(icol,ilyr)
-              v_tmp(ioff,ilyr,ib) = phys_state(lchnk)%v(icol,ilyr)
-              u_dt_tmp(ioff,ilyr,ib) = phys_tend(lchnk)%dudt(icol,ilyr)
-              v_dt_tmp(ioff,ilyr,ib) = phys_tend(lchnk)%dvdt(icol,ilyr)
-              pdel_tmp(ioff,ilyr,ib) = phys_state(lchnk)%pdel(icol,ilyr)
-              pdeldry_tmp(ioff,ilyr,ib) = phys_state(lchnk)%pdeldry(icol,ilyr)
-              do m=1, pcnst
-                 Q_tmp(ioff,ilyr,m,ib) = phys_state(lchnk)%q(icol,ilyr,m)
-              end do
-           end do
+  call t_startf('pd_copy')
+  !$omp parallel do num_threads(max_num_threads) private (col_ind, lchnk, icol, ie, blk_ind, ilyr, m)
+  do col_ind = 1, columns_on_task
+     call get_dyn_col_p(col_ind, blk_num, blk_ind)
+     call get_chunk_info_p(col_ind, lchnk, icol)
+     do ilyr = 1, pver
+        t_dt_tmp(blk_ind(1),ilyr)   = phys_tend(lchnk)%dtdt(icol,ilyr)
+        u_tmp(blk_ind(1),ilyr)      = phys_state(lchnk)%u(icol,ilyr)
+        v_tmp(blk_ind(1),ilyr)      = phys_state(lchnk)%v(icol,ilyr)
+        u_dt_tmp(blk_ind(1),ilyr)   = phys_tend(lchnk)%dudt(icol,ilyr)
+        v_dt_tmp(blk_ind(1),ilyr)   = phys_tend(lchnk)%dvdt(icol,ilyr)
+        pdel_tmp(blk_ind(1),ilyr)   = phys_state(lchnk)%pdel(icol,ilyr)
+        pdeldry_tmp(blk_ind(1),ilyr)  = phys_state(lchnk)%pdeldry(icol,ilyr)
+        do m = 1, pcnst
+           Q_tmp(blk_ind(1),ilyr,m) =  phys_state(lchnk)%q(icol,ilyr,m)
         end do
      end do
-
-  else
-
-     tsize = 7 + pcnst
-     ib = 1
-
-     allocate(bbuffer(tsize*block_buf_nrecs))
-     allocate(cbuffer(tsize*chunk_buf_nrecs))
-     allocate(bpter((ie-is+1)*(je-js+1),0:pver))    ! offsets into block buffer for packing data
-
-!$omp parallel do private (lchnk, ncols, cpter, i, icol, ilyr, m)
-     do lchnk = begchunk, endchunk
-
-        call set_state_pdry(phys_state(lchnk))	 ! First get dry pressure to use for this timestep
-        ncols = get_ncols_p(lchnk)
-
-        call chunk_to_block_send_pters(lchnk, pcols, pver+1, tsize, cpter)
-
-        do i=1,ncols
-           cbuffer(cpter(i,0):cpter(i,0)+6+pcnst) = 0.0_r8
-        end do
-
-        do icol = 1, ncols
-
-           do ilyr = 1, pver
-              cbuffer(cpter(icol,ilyr))   = phys_tend(lchnk)%dtdt(icol,ilyr)
-              cbuffer(cpter(icol,ilyr)+1) = phys_state(lchnk)%u(icol,ilyr)
-              cbuffer(cpter(icol,ilyr)+2) = phys_state(lchnk)%v(icol,ilyr)
-              cbuffer(cpter(icol,ilyr)+3) = phys_tend(lchnk)%dudt(icol,ilyr)
-              cbuffer(cpter(icol,ilyr)+4) = phys_tend(lchnk)%dvdt(icol,ilyr)
-              cbuffer(cpter(icol,ilyr)+5) = phys_state(lchnk)%pdel(icol,ilyr)
-              cbuffer(cpter(icol,ilyr)+6) = phys_state(lchnk)%pdeldry(icol,ilyr)
-              do m = 1, pcnst
-                 cbuffer(cpter(icol,ilyr)+6+m) = phys_state(lchnk)%q(icol,ilyr,m)
-              end do
-           end do
-
-        end do
-
-     end do
-
-     call t_barrierf('sync_chk_to_blk', mpicom)
-     call t_startf ('chunk_to_block')
-     call transpose_chunk_to_block(tsize, cbuffer, bbuffer)
-     call t_stopf  ('chunk_to_block')
-
-     if (iam < npes) then
-
-        call chunk_to_block_recv_pters(iam+1, (ie-is+1)*(je-js+1), pver+1, tsize, bpter)
-        do icol = 1, (ie-is+1)*(je-js+1)
-           do ilyr = 1, pver
-              t_dt_tmp(icol,ilyr,ib) = bbuffer(bpter(icol,ilyr))
-              u_tmp(icol,ilyr,ib) = bbuffer(bpter(icol,ilyr)+1)
-              v_tmp(icol,ilyr,ib) = bbuffer(bpter(icol,ilyr)+2)
-              u_dt_tmp(icol,ilyr,ib) = bbuffer(bpter(icol,ilyr)+3)
-              v_dt_tmp(icol,ilyr,ib) = bbuffer(bpter(icol,ilyr)+4)
-              pdel_tmp(icol,ilyr,ib) = bbuffer(bpter(icol,ilyr)+5)
-              pdeldry_tmp(icol,ilyr,ib) = bbuffer(bpter(icol,ilyr)+6)
-              do m = 1, pcnst
-                 Q_tmp(icol,ilyr,m,ib) = bbuffer(bpter(icol,ilyr)+6+m)
-              end do
-           end do
-        end do
-
-     end if
-
-     deallocate(bbuffer)
-     deallocate(cbuffer)
-     deallocate(bpter)
-
-  end if
+  end do
 
   dt = get_step_size()
-
   idim=ie-is+1
 
-! pt_dt is adjusted below.
+  ! pt_dt is adjusted below.
   n = 1
   do j = js, je
      do i = is, ie
         do k = 1, pver
-           t_dt(i, j, k) = t_dt_tmp    (n, k, 1)
-           u_dt(i, j, k) = u_dt_tmp    (n, k, 1)
-           v_dt(i, j, k) = v_dt_tmp    (n, k, 1)
+           t_dt(i, j, k) = t_dt_tmp    (n, k)
+           u_dt(i, j, k) = u_dt_tmp    (n, k)
+           v_dt(i, j, k) = v_dt_tmp    (n, k)
            Atm(mytile)%ua(i, j, k) =  Atm(mytile)%ua(i, j, k) + u_dt(i, j, k)*dt
            Atm(mytile)%va(i, j, k) =  Atm(mytile)%va(i, j, k) + v_dt(i, j, k)*dt
-           Atm(mytile)%delp(i, j, k) = pdel_tmp    (n, k, 1)
-           delpdry(i, j, k) = pdeldry_tmp    (n, k, 1)
+           Atm(mytile)%delp(i, j, k) = pdel_tmp    (n, k)
+           delpdry(i, j, k) = pdeldry_tmp    (n, k)
            do m = 1, pcnst
               ! dynamics tracers may be in a different order from cam tracer array
               m_ffsl=qsize_tracer_idx_cam2dyn(m)
-              Atm(mytile)%q(i, j, k, m_ffsl) = Q_tmp(n, k, m, 1)
+              Atm(mytile)%q(i, j, k, m_ffsl) = Q_tmp(n, k, m)
            end do
         end do
         n = n + 1
      end do
-   end do
+  end do
 
   ! Update delp and mixing ratios to account for the difference between CAM and FV3 total air mass
   ! CAM total air mass (pdel)  = (dry + vapor)
@@ -479,14 +391,15 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
         end do
      end do
   end do
+  call t_stopf('pd_copy')
 
-   ! update dynamics temperature from physics tendency
-   ! if using fv3_lcv_moist adjust temperature tendency to conserve energy across phys/dynamics
-   ! interface accounting for differences in the moist/wet assumptions
+  ! update dynamics temperature from physics tendency
+  ! if using fv3_lcv_moist adjust temperature tendency to conserve energy across phys/dynamics
+  ! interface accounting for differences in the moist/wet assumptions
 
-   do k = 1, pver
-      do j = js, je
-         do i = is, ie
+  do k = 1, pver
+     do j = js, je
+        do i = is, ie
            if (fv3_scale_ttend) then
               qall=0._r8
               cpfv3=0._r8
@@ -526,7 +439,7 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
      enddo
   enddo
 
-!$omp parallel do private(i,j,k)
+  !$omp parallel do private(i,j,k)
   do j=js,je
      do k=1,pver
         do i=is,ie
@@ -535,14 +448,14 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
      enddo
   enddo
 
-!$omp parallel do private(i,j,k)
+  !$omp parallel do private(i,j,k)
   do j=js,je
      do k=1,pver
         do i=is,ie
            Atm(mytile)%pk(i,j,k+1)= Atm(mytile)%pe(i,k+1,j) ** kappa
            Atm(mytile)%peln(i,k+1,j) = log(Atm(mytile)%pe(i,k+1,j))
            Atm(mytile)%pkz(i,j,k) = (Atm(mytile)%pk(i,j,k+1)-Atm(mytile)%pk(i,j,k))/ &
-                                    (kappa*(Atm(mytile)%peln(i,k+1,j)-Atm(mytile)%peln(i,k,j)))
+                (kappa*(Atm(mytile)%peln(i,k+1,j)-Atm(mytile)%peln(i,k,j)))
         enddo
      enddo
   enddo
@@ -554,7 +467,6 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
   end do
 
   call calc_tot_energy_dynamics(dyn_in%atm,'dAP')
-
 
   !set the D-Grid winds from the physics A-grid winds/tendencies.
   if ( Atm(mytile)%flagstruct%dwind_2d ) then
@@ -611,7 +523,7 @@ subroutine derived_phys_dry(phys_state, phys_tend, pbuf2d)
   use geopotential,   only: geopotential_t
   use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk
   use physics_types,  only: set_wet_to_dry
-  use physconst,      only: thermodynamic_active_species_num,thermodynamic_active_species_idx_dycore
+  use physconst,      only: thermodynamic_active_species_num
   use physconst,      only: thermodynamic_active_species_idx,dry_air_species_num
   use ppgrid,         only: pver
   use qneg_module,    only: qneg3
@@ -952,7 +864,6 @@ subroutine fv3_tracer_diags(atm)
   use fv_arrays_mod,         only: fv_atmos_type
   use physconst,             only: thermodynamic_active_species_num,thermodynamic_active_species_idx_dycore, &
                                    dry_air_species_num
-
   ! arguments
   type (fv_atmos_type), intent(in),  pointer :: Atm(:)
 
@@ -1049,7 +960,7 @@ subroutine z_sum(atm,is,ie,js,je,km,q,msum,gpsum)
 
   ! vertical integral
 
-  use fv_arrays_mod,   only: fv_atmos_type
+  use fv_arrays_mod,          only: fv_atmos_type
 
   ! arguments
 
