@@ -48,9 +48,9 @@ module dyn_comp
                                fv3_lcp_moist,fv3_lcv_moist,qsize_tracer_idx_cam2dyn,fv3_scale_ttend
     use dyn_grid,        only: mytile, ini_grid_name
     use field_manager_mod, only: MODEL_ATMOS
-    use fms_io_mod,      only: set_domain, nullify_domain
+    use fms_io_mod,      only: set_domain
     use fv_arrays_mod,   only: fv_atmos_type, fv_grid_bounds_type
-    use fv_grid_utils_mod,only: cubed_to_latlon, g_sum
+    use fv_grid_utils_mod,only: g_sum
     use fv_nesting_mod,  only: twoway_nesting
     use infnan,          only: isnan
     use mpp_domains_mod, only: mpp_update_domains, domain2D, DGRID_NE
@@ -79,13 +79,15 @@ module dyn_comp
 
 type dyn_import_t
   type (fv_atmos_type),  pointer :: Atm(:) => null()
-  integer,               pointer :: mygindex(:,:) => null()
-  integer,               pointer :: mylindex(:,:) => null()
 end type dyn_import_t
 
 type dyn_export_t
   type (fv_atmos_type),  pointer :: Atm(:) => null()
 end type dyn_export_t
+
+! Frontogenesis indices
+integer, public    :: frontgf_idx      = -1
+integer, public    :: frontga_idx      = -1
 
 ! Private interfaces
 interface read_dyn_var
@@ -222,6 +224,7 @@ subroutine dyn_readnl(nlfilename)
   ! Broadcast namelist values to all PEs
   call MPI_bcast(fv3_npes, 1, mpi_integer, masterprocid, mpicom, ierr)
   call MPI_bcast(fv3_scale_ttend, 1, mpi_logical, masterprocid, mpicom, ierr)
+  call MPI_bcast(fv3_hydrostatic, 1, mpi_logical, masterprocid, mpicom, ierr)
   call MPI_bcast(fv3_lcv_moist, 1, mpi_logical, masterprocid, mpicom, ierr)
   call MPI_bcast(fv3_lcp_moist, 1, mpi_logical, masterprocid, mpicom, ierr)
 
@@ -232,6 +235,10 @@ subroutine dyn_readnl(nlfilename)
   if (fv3_npes <= 0) then
      call endrun('dyn_readnl: ERROR: fv3_npes must be > 0')
   end if
+
+  ! Non-hydrostatic runs not currently supported
+  if (.not.fv3_hydrostatic) &
+       call endrun('dyn_readnl: ERROR FV3 Non-hydrostatic option is not supported, set namelist fv3_hydrostatic = .true.')
 
   !
   ! write fv3 dycore namelist options to log
@@ -380,7 +387,7 @@ subroutine dyn_init(dyn_in, dyn_out)
   use cam_history,     only: addfld, horiz_only
   use cam_history,     only: register_vector_field
   use cam_pio_utils,   only: clean_iodesc_list
-  use dyn_grid,        only: Atm,mygindex,mylindex
+  use dyn_grid,        only: Atm
   use fv_diagnostics_mod, only: fv_diag_init
   use fv_mp_mod,       only: fill_corners, YDir
   use infnan,          only: inf, assignment(=)
@@ -566,8 +573,6 @@ subroutine dyn_init(dyn_in, dyn_out)
 
    ! Data initialization
    dyn_in%Atm  => Atm
-   dyn_in%mygindex  => mygindex
-   dyn_in%mylindex  => mylindex
    dyn_out%Atm => Atm
 
    allocate(u_dt(isd:ied,jsd:jed,nlev))
@@ -610,8 +615,9 @@ subroutine dyn_init(dyn_in, dyn_out)
    delp(ie+1:ied,jsd:js-1,1:nlev)=0._r8
    delp(ie+1:ied,je+1:jed,1:nlev)=0._r8
 
-   if (initial_run) then
+   call set_phis(dyn_in)
 
+   if (initial_run) then
       ! Read in initial data
       call read_inidat(dyn_in)
       call clean_iodesc_list()
@@ -681,7 +687,7 @@ subroutine dyn_init(dyn_in, dyn_out)
    fv3time = set_date(year,month,day,hour,min,sec)
    Atm(mytile)%Time_init = fv3time
    call diag_manager_init()
-   call fv_diag_init(Atm(mytile:mytile), Atm(mytile)%atmos_axes, fv3time, npx, npy, nlev, Atm(mytile)%flagstruct%p_ref)
+!jt   call fv_diag_init(Atm(mytile:mytile), Atm(mytile)%atmos_axes, fv3time, npx, npy, nlev, Atm(mytile)%flagstruct%p_ref)
 
 end subroutine dyn_init
 
@@ -909,11 +915,11 @@ subroutine read_inidat(dyn_in)
   use constituents,          only: pcnst, cnst_name, cnst_read_iv,qmin, cnst_type
   use const_init,            only: cnst_init_default
   use cam_initfiles,         only: initial_file_get_id, topo_file_get_id, pertlim
-  use cam_grid_support,      only: cam_grid_id, cam_grid_get_gcid, iMap, &
-                                   cam_grid_get_latvals, cam_grid_get_lonvals
-  use cam_history_support,   only: max_fieldname_len
+  use cam_grid_support,      only: cam_grid_id, cam_grid_get_latvals, cam_grid_get_lonvals
+  use dyn_grid,              only: get_dyn_grid_info
   use hycoef,                only: hyai, hybi, ps0
   use cam_initfiles,         only: scale_dry_air_mass
+  use physics_column_type,   only: physics_column_t
 
   ! Arguments:
   type (dyn_import_t), target, intent(inout) :: dyn_in   ! dynamics import
@@ -927,9 +933,8 @@ subroutine read_inidat(dyn_in)
 
   type(file_desc_t),     pointer :: fh_topo       => null()
   type(fv_atmos_type),   pointer :: Atm(:)        => null()
-  integer,               pointer :: mylindex(:,:) => null()
-  integer,               pointer :: mygindex(:,:) => null()
   type(file_desc_t)              :: fh_ini
+  type(physics_column_t), allocatable :: dyn_columns(:) ! Dyn decomp
 
 
   character(len=*), parameter      :: subname='READ_INIDAT'
@@ -952,7 +957,7 @@ subroutine read_inidat(dyn_in)
   real(r8), allocatable, dimension(:)       :: latvals_rad, lonvals_rad
   real(r8), allocatable, dimension(:,:)     :: dbuf2
   real(r8), allocatable, dimension(:,:)     :: pstmp
-  real(r8), allocatable, dimension(:,:)     :: phis_tmp, var2d
+  real(r8), allocatable, dimension(:,:)     :: var2d
   real(r8), allocatable, dimension(:,:,:)   :: dbuf3, var3d
   real(r8), allocatable, dimension(:,:,:,:) :: dbuf4
   real(r8), pointer, dimension(:,:,:)       :: agrid,grid
@@ -961,14 +966,18 @@ subroutine read_inidat(dyn_in)
   real(r8)                                  :: fv3_totwatermass, fv3_airmass
   real(r8)                                  :: reldif
   logical                                   :: inic_wet !initial condition is based on wet pressure and water species
+  integer                                   :: hdim1_d ! # longitudes or grid size
+  integer                                   :: hdim2_d ! # latitudes or 1
+  integer                                   :: num_lev ! # levels
+  integer                                   :: index_model_top_layer
+  integer                                   :: index_surface_layer
+  logical                                   :: unstructured
 
   !-----------------------------------------------------------------------
 
   Atm => dyn_in%Atm
   grid => Atm(mytile)%gridstruct%grid_64
   agrid => Atm(mytile)%gridstruct%agrid_64
-  mylindex => dyn_in%mylindex
-  mygindex => dyn_in%mygindex
 
   is = Atm(mytile)%bd%is
   ie = Atm(mytile)%bd%ie
@@ -985,8 +994,6 @@ subroutine read_inidat(dyn_in)
 
   ! Set mask to indicate which columns are active
   ldof_size=(je-js+1)*(ie-is+1)
-  allocate(phis_tmp(ldof_size,1))
-  phis_tmp(:,:)=0._r8
 
   latvals_deg => cam_grid_get_latvals(cam_grid_id('FFSL'))
   lonvals_deg => cam_grid_get_lonvals(cam_grid_id('FFSL'))
@@ -1002,11 +1009,16 @@ subroutine read_inidat(dyn_in)
   latvals_rad(:) = latvals_deg(:)*deg2rad
   lonvals_rad(:) = lonvals_deg(:)*deg2rad
 
+  call get_dyn_grid_info(hdim1_d, hdim2_d, num_lev,                       &
+       index_model_top_layer, index_surface_layer, unstructured, dyn_columns)
+
+
   allocate(glob_ind(blksize))
+  n=0
   do j = js, je
      do i = is, ie
-        n=mylindex(i,j)
-        glob_ind(n) = mygindex(i,j)
+        n=n+1
+        glob_ind(n) = dyn_columns(n)%global_col_num
      end do
   end do
 
@@ -1029,24 +1041,25 @@ subroutine read_inidat(dyn_in)
      end do
 
      call analytic_ic_set_ic(vcoord, latvals_rad, lonvals_rad, glob_ind,PS=dbuf2)
+     n=0
      do j = js, je
         do i = is, ie
            ! PS
-           n=mylindex(i,j)
+           n=n+1
            atm(mytile)%ps(i,j) =   dbuf2(n, 1)
         end do
      end do
 
-     call analytic_ic_set_ic(vcoord, latvals_rad, lonvals_rad, glob_ind ,            &
-          PHIS_OUT=phis_tmp(:,:))
+!jt     call analytic_ic_set_ic(vcoord, latvals_rad, lonvals_rad, glob_ind ,            &
+!jt          PHIS_OUT=phis_tmp(:,:))
 
      call analytic_ic_set_ic(vcoord, latvals_rad, lonvals_rad, glob_ind,            &
           T=dbuf3(:,:,:))
-
+     n=0
      do j = js, je
         do i = is, ie
            ! T
-           n=mylindex(i,j)
+           n=n+1
            atm(mytile)%pt(i,j,:) = dbuf3(n, :, 1)
         end do
      end do
@@ -1055,11 +1068,11 @@ subroutine read_inidat(dyn_in)
      dbuf3=0._r8
      call analytic_ic_set_ic(vcoord, latvals_rad, lonvals_rad, glob_ind,            &
           U=dbuf3(:,:,:))
-
+     n=0
      do j = js, je
         do i = is, ie
            ! U a-grid
-           n=mylindex(i,j)
+           n=n+1
            atm(mytile)%ua(i,j,:) = dbuf3(n, :, 1)
         end do
      end do
@@ -1067,11 +1080,11 @@ subroutine read_inidat(dyn_in)
      dbuf3=0._r8
      call analytic_ic_set_ic(vcoord, latvals_rad, lonvals_rad, glob_ind,            &
           V=dbuf3(:,:,:))
-
+     n=0
      do j = js, je
         do i = is, ie
            ! V a-grid
-           n=mylindex(i,j)
+           n=n+1
            atm(mytile)%va(i,j,:) = dbuf3(n, :, 1)
         end do
      end do
@@ -1083,9 +1096,10 @@ subroutine read_inidat(dyn_in)
      do m_cnst = 1, pcnst
         m_cnst_ffsl=qsize_tracer_idx_cam2dyn(m_cnst)
         Atm(mytile)%q(:,:,:,m_cnst_ffsl) = 0.0_r8
+        indx=0
         do j = js, je
            do i = is, ie
-              indx=mylindex(i,j)
+              indx=indx+1
               Atm(mytile)%q(i,j,:,m_cnst_ffsl) = dbuf4(indx, :, 1, m_cnst)
            end do
         end do
@@ -1144,9 +1158,10 @@ subroutine read_inidat(dyn_in)
         call random_seed(size=rndm_seed_sz)
         allocate(rndm_seed(rndm_seed_sz))
 
+        indx=0
         do i=is,ie
            do j=js,je
-              indx=mylindex(i,j)
+              indx=indx+1
               rndm_seed = glob_ind(indx)
               call random_seed(put=rndm_seed)
               do k=1,nlev
@@ -1206,10 +1221,10 @@ subroutine read_inidat(dyn_in)
                 m_cnst_ffsl,' to default'
            call cnst_init_default(m_cnst, latvals_rad, lonvals_rad, dbuf3)
            do k=1, nlev
-              indx = 1
+              indx = 0
               do j = js, je
                  do i = is, ie
-                    indx=mylindex(i,j)
+                    indx=indx+1
                     atm(mytile)%q(i,j, k, m_cnst_ffsl) = max(qmin(m_cnst),dbuf3(indx,k,1))
                  end do
               end do
@@ -1261,37 +1276,6 @@ subroutine read_inidat(dyn_in)
   ! Put the error handling back the way it was
   call pio_seterrorhandling(fh_ini, err_handling)
 
-  ! If a topo file is specified use it.  This will overwrite the PHIS set by the
-  ! analytic IC option.
-  !
-  ! If using the physics grid then the topo file will be on that grid since its
-  ! contents are primarily for the physics parameterizations, and the values of
-  ! PHIS should be consistent with the values of sub-grid variability (e.g., SGH)
-  ! which are computed on the physics grid.
-  if (associated(fh_topo)) then
-
-     ! We need to be able to see the PIO return values
-     call pio_seterrorhandling(fh_topo, PIO_BCAST_ERROR, pio_errtype)
-
-     fieldname = 'PHIS'
-     if (dyn_field_exists(fh_topo, trim(fieldname))) then
-        call read_dyn_var(trim(fieldname), fh_topo, 'ncol', phis_tmp)
-     else
-        call endrun(trim(subname)//': ERROR: Could not find PHIS field on input datafile')
-     end if
-
-     ! Put the error handling back the way it was
-     call pio_seterrorhandling(fh_topo, pio_errtype)
-  end if
-
-  ! Process phis_tmp
-  atm(mytile)%phis = 0.0_r8
-  do j = js, je
-     do i = is, ie
-        indx = mylindex(i,j)
-        atm(mytile)%phis(i,j) = phis_tmp(indx,1)
-     end do
-  end do
   !
   ! initialize delp (and possibly mixing ratios) from IC fields.
   !
@@ -1416,7 +1400,6 @@ subroutine read_inidat(dyn_in)
   ! once we've read or initialized all the fields we call update_domains to
   ! update the halo regions
 
-  call mpp_update_domains( Atm(mytile)%phis, Atm(mytile)%domain )
   call mpp_update_domains( atm(mytile)%ps,   Atm(mytile)%domain )
   call mpp_update_domains( atm(mytile)%u,atm(mytile)%v,Atm(mytile)%domain,gridtype=DGRID_NE,complete=.true. )
   call mpp_update_domains( atm(mytile)%pt,   Atm(mytile)%domain )
@@ -1424,9 +1407,196 @@ subroutine read_inidat(dyn_in)
   call mpp_update_domains( atm(mytile)%q,    Atm(mytile)%domain )
 
   ! Cleanup
-  deallocate(phis_tmp)
 
 end subroutine read_inidat
+
+!========================================================================================
+
+subroutine set_phis(dyn_in)
+
+   ! Set PHIS according to the following rules.
+   !
+   ! 1) If a topo file is specified use it.  This option has highest precedence.
+   ! 2) If not using topo file, but analytic_ic option is on, use analytic phis.
+   ! 3) Set phis = 0.0.
+   !
+   ! If using the physics grid then the topo file will be on that grid since its
+   ! contents are primarily for the physics parameterizations, and the values of
+   ! PHIS should be consistent with the values of sub-grid variability (e.g., SGH)
+   ! which are computed on the physics grid.
+
+   use cam_grid_support,      only: cam_grid_id, cam_grid_get_latvals, cam_grid_get_lonvals
+   use cam_grid_support,      only: iMap, max_hcoordname_len ,cam_grid_get_gcid, cam_grid_dimensions
+   use cam_history_support,   only: max_fieldname_len
+   use cam_initfiles,         only: topo_file_get_id
+   use dyn_grid,              only: get_dyn_grid_info
+   use dyn_tests_utils,       only: vc_moist_pressure
+   use inic_analytic,         only: analytic_ic_active, analytic_ic_set_ic
+   use physics_column_type,   only: physics_column_t
+   use pio,                   only: file_desc_t, pio_seterrorhandling, pio_bcast_error
+   use pio,                   only: pio_inq_dimlen,pio_inq_dimid,PIO_NOERR
+
+
+   ! Arguments
+   type (dyn_import_t), target, intent(inout) :: dyn_in   ! dynamics import
+
+   ! local variables
+   type(file_desc_t), pointer       :: fh_topo
+
+   type(fv_atmos_type), pointer     :: Atm(:)
+
+   type(physics_column_t), allocatable :: dyn_columns(:) ! Dyn decomp
+
+   real(r8), allocatable            :: phis_tmp(:,:)
+   real(r8), allocatable            :: dbuf2(:,:)
+   real(r8), pointer                :: agrid(:,:,:),grid(:,:,:)
+
+   integer                          :: is,ie,js,je,isd,ied,jsd,jed,n,j,i
+   integer                          :: ierr, pio_errtype
+   integer                          :: hdim1_d ! # longitudes or grid size
+   integer                          :: hdim2_d ! # latitudes or 1
+   integer                          :: num_lev ! # levels
+   integer                          :: index_model_top_layer
+   integer                          :: index_surface_layer
+   logical                          :: unstructured
+
+   character(len=max_fieldname_len) :: fieldname
+   character(len=max_hcoordname_len):: grid_name
+   integer                          :: blksize
+   integer                          :: dims(2)
+   integer                          :: dyn_cols
+   integer                          :: ncol_did
+   integer                          :: ncol_size
+   integer                          :: vcoord
+
+   integer(iMap), pointer           :: ldof(:)            ! Basic (2D) grid dof
+   logical,  allocatable            :: pmask(:)           ! (npsq*nelemd) unique columns
+
+   ! Variables for analytic initial conditions
+   integer,  allocatable            :: glob_ind(:)
+   logical,  allocatable            :: pmask_phys(:)
+   real(r8), pointer                :: latvals_deg(:)
+   real(r8), pointer                :: lonvals_deg(:)
+   real(r8), allocatable            :: latvals(:)
+   real(r8), allocatable            :: lonvals(:)
+
+   character(len=*), parameter      :: subname='set_phis'
+   !----------------------------------------------------------------------------
+   Atm => dyn_in%Atm
+   grid => Atm(mytile)%gridstruct%grid_64
+   agrid => Atm(mytile)%gridstruct%agrid_64
+
+   is = Atm(mytile)%bd%is
+   ie = Atm(mytile)%bd%ie
+   js = Atm(mytile)%bd%js
+   je = Atm(mytile)%bd%je
+   isd = Atm(mytile)%bd%isd
+   ied = Atm(mytile)%bd%ied
+   jsd = Atm(mytile)%bd%jsd
+   jed = Atm(mytile)%bd%jed
+
+   fh_topo => topo_file_get_id()
+
+   ! Set mask to indicate which columns are active
+   allocate(phis_tmp(is:ie,js:je))
+   phis_tmp=0._r8
+
+   latvals_deg => cam_grid_get_latvals(cam_grid_id('FFSL'))
+   lonvals_deg => cam_grid_get_lonvals(cam_grid_id('FFSL'))
+   blksize=(ie-is+1)*(je-js+1)
+
+   ! Set mask to indicate which columns are active in GLL grid.
+   nullify(ldof)
+   call cam_grid_get_gcid(cam_grid_id('FFSL'), ldof)
+   allocate(pmask((je-js+1)*(ie-is+1)))
+   pmask(:) = (ldof /= 0)
+   deallocate(ldof)
+
+   if (associated(fh_topo)) then
+
+      ! Set PIO to return error flags.
+      call pio_seterrorhandling(fh_topo, PIO_BCAST_ERROR, pio_errtype)
+
+      grid_name = 'FFSL'
+
+      ! Get number of global columns from the grid object and check that
+      ! it matches the file data.
+      call cam_grid_dimensions(grid_name, dims)
+      dyn_cols = dims(1)
+
+      ! The dimension of the unstructured grid in the TOPO file is 'ncol'.
+      ierr = pio_inq_dimid(fh_topo, 'ncol', ncol_did)
+      if (ierr /= PIO_NOERR) then
+         call endrun(subname//': dimension ncol not found in bnd_topo file')
+      end if
+      ierr = pio_inq_dimlen(fh_topo, ncol_did, ncol_size)
+      if (ncol_size /= dyn_cols) then
+         if (masterproc) then
+            write(iulog,*) subname//': ncol_size=', ncol_size, ' : dyn_cols=', dyn_cols
+         end if
+         call endrun(subname//': ncol size in bnd_topo file does not match grid definition')
+      end if
+
+      fieldname = 'PHIS'
+      if (dyn_field_exists(fh_topo, trim(fieldname))) then
+         call read_dyn_var(fieldname, fh_topo, 'ncol', phis_tmp)
+      else
+         call endrun(subname//': Could not find PHIS field on input datafile')
+      end if
+
+      ! Put the error handling back the way it was
+      call pio_seterrorhandling(fh_topo, pio_errtype)
+
+      atm(mytile)%phis(is:ie,js:je)=phis_tmp(is:ie,js:je)
+
+   else if (analytic_ic_active()) then
+
+      ! lat/lon needed in radians
+      latvals_deg => cam_grid_get_latvals(cam_grid_id('FFSL'))
+      lonvals_deg => cam_grid_get_lonvals(cam_grid_id('FFSL'))
+      allocate(latvals(blksize))
+      allocate(lonvals(blksize))
+      latvals(:) = latvals_deg(:)*deg2rad
+      lonvals(:) = lonvals_deg(:)*deg2rad
+
+      call get_dyn_grid_info(hdim1_d, hdim2_d, num_lev,                       &
+           index_model_top_layer, index_surface_layer, unstructured, dyn_columns)
+
+      allocate(glob_ind(blksize))
+      n=0
+      do j = js, je
+         do i = is, ie
+            n=n+1
+            glob_ind(n) = dyn_columns(n)%global_col_num
+         end do
+      end do
+
+      allocate(dbuf2(blksize,1))
+      vcoord = vc_moist_pressure
+      call analytic_ic_set_ic(vcoord, latvals, lonvals, glob_ind, &
+                              PHIS_OUT=dbuf2, mask=pmask(:))
+      deallocate(glob_ind)
+
+      ! Set PHIS in atm structure
+      n = 1
+      do j = js, je
+         do i = is, ie
+            Atm(mytile)%phis(i, j) = dbuf2(n,1)
+            n=n+1
+         end do
+      end do
+      deallocate(latvals)
+      deallocate(lonvals)
+      deallocate(dbuf2)
+   end if
+
+   call mpp_update_domains( Atm(mytile)%phis, Atm(mytile)%domain )
+
+   deallocate(pmask)
+   deallocate(phis_tmp)
+
+
+end subroutine set_phis
 
 !=======================================================================
 
@@ -1437,7 +1607,7 @@ end subroutine read_inidat
     use cam_history,            only: outfld, hist_fld_active
     use constituents,           only: cnst_get_ind
     use dimensions_mod,         only: nlev
-    use fv_mp_mod,              only: ng
+
     !------------------------------Arguments--------------------------------
 
     type(fv_atmos_type), pointer, intent(in) :: Atm(:)
