@@ -864,6 +864,7 @@ subroutine fv3_tracer_diags(atm)
   use fv_arrays_mod,         only: fv_atmos_type
   use physconst,             only: thermodynamic_active_species_num,thermodynamic_active_species_idx_dycore, &
                                    dry_air_species_num
+  use fv_eta_mod,            only: get_eta_level
   ! arguments
   type (fv_atmos_type), intent(in),  pointer :: Atm(:)
 
@@ -876,7 +877,8 @@ subroutine fv3_tracer_diags(atm)
   real(r8)                     :: qtot(pcnst), psum
   real(r8), allocatable, dimension(:,:,:)  :: delpdry, psq
   real(r8), allocatable, dimension(:,:)    :: psdry, q_strat
-
+  real(r8), allocatable, dimension(:)      :: phalf,pfull
+  real(r8)                     :: p_ref = 1.E5   !< Surface pressure used to construct a horizontally-uniform reference
   !----------------------------------------------------------------------------
 
   is = Atm(mytile)%bd%is
@@ -920,10 +922,13 @@ subroutine fv3_tracer_diags(atm)
   end do
 ! Mean water vapor in the "stratosphere" (75 mb and above):
   qm_strat = 0._r8
-  if ( Atm(mytile)%idiag%phalf(2)< 75._r8 ) then
+    allocate ( phalf(Atm(mytile)%npz+1) )
+    allocate ( pfull(Atm(mytile)%npz) )
+    call get_eta_level(Atm(mytile)%npz, p_ref, pfull, phalf, Atm(mytile)%ak, Atm(mytile)%bk, 0.01_r8)
+  if ( phalf(2)< 75._r8 ) then
      kstrat = 1
      do k=2,nlev
-        if ( Atm(mytile)%idiag%phalf(k+1) > 75._r8 ) exit
+        if ( phalf(k+1) > 75._r8 ) exit
         kstrat = k
      enddo
      call z_sum(Atm,is,ie,js,je, kstrat, Atm(mytile)%q(is:ie,js:je,1:kstrat,1 ), q_strat,psum)
@@ -952,6 +957,8 @@ subroutine fv3_tracer_diags(atm)
   deallocate(delpdry)
   deallocate(psdry)
   deallocate(psq)
+  deallocate(pfull)
+  deallocate(phalf)
   deallocate(q_strat)
 end subroutine fv3_tracer_diags
 
