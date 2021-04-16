@@ -130,7 +130,7 @@ contains
 
         character(len=*), intent(in) :: mesg
 
-        character(len=128) :: mesg_log
+        character(len=200) :: mesg_log
         integer(c_long) :: maxrss
         integer :: maxrss_i4
         integer, dimension(:), allocatable :: maxrss_array
@@ -153,7 +153,7 @@ contains
             call MPI_Gather(maxrss_i4, 1, MPI_INTEGER, maxrss_array, 1, MPI_INTEGER, 0, mpi_comm, mpi_ierr)
             if (comm_rank == 0 .and. mpi_ierr == MPI_SUCCESS) then
                 nsp = max(0,64-len_trim(mesg))
-                write(mesg_log,'(a,a,i9,a1,i9,a1,i9,a)') 'MEM [min/max/sum] '//trim(mesg)//' -> ', spaces(1:nsp), &
+                write(mesg_log,'(a,a,i12,a1,i12,a1,i12,a)') 'MEM [min/max/sum] '//trim(mesg)//' -> ', spaces(1:nsp), &
                                                       minval(maxrss_array), '/', maxval(maxrss_array), '/', sum(maxrss_array), ' kB'
                 write(logunit,'(a)') trim(mesg_log)
             else if (comm_rank == 0) then

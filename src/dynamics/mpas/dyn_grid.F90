@@ -39,6 +39,8 @@ use mpas_derived_types, only: mpas_pool_type
 
 use physics_column_type, only : physics_column_t
 
+use memstats
+
 implicit none
 private
 save
@@ -140,6 +142,9 @@ subroutine dyn_grid_init()
    character(len=*), parameter :: subname = 'dyn_grid::dyn_grid_init'
    !----------------------------------------------------------------------------
 
+   call memstats_init(mpicom, iulog)
+   call memstats_log("dyn_grid_init: start")
+
    ! Get filehandle for initial file
    fh_ini => initial_file_get_id()
 
@@ -188,6 +193,8 @@ subroutine dyn_grid_init()
    ! centered grid is used by the physics parameterizations.  The physics
    ! decomposition of the cell centered grid is defined in phys_grid_init.
    call define_cam_grids()
+
+   call memstats_log("dyn_grid_init: end")
    
 end subroutine dyn_grid_init
 
@@ -226,6 +233,8 @@ subroutine get_dyn_grid_info(hdim1_d, hdim2_d, num_levels, index_model_top_layer
    integer :: iCell
    integer :: my_proc_id
    character(len=*), parameter :: subname = 'get_dyn_grid_info'
+
+   call memstats_log("get_dyn_grid_info: start")
 
    ! TODO: Is it possible we can guarantee that local_dyn_columns will never be allocated before this function?
    if (allocated(dyn_columns)) then
@@ -278,6 +287,8 @@ subroutine get_dyn_grid_info(hdim1_d, hdim2_d, num_levels, index_model_top_layer
        ! dyn_block_index is not used, but it needs to be allocate to a 0 size
        allocate(dyn_columns(iCell) % dyn_block_index(0))
    end do
+
+   call memstats_log("get_dyn_grid_info: end")
 
 end subroutine get_dyn_grid_info
 

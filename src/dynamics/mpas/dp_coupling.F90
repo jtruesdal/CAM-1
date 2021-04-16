@@ -26,6 +26,8 @@ use cam_logfile,    only: iulog
 use perf_mod,       only: t_startf, t_stopf, t_barrierf
 use cam_abortutils, only: endrun
 
+use memstats
+
 implicit none
 private
 save
@@ -86,6 +88,9 @@ subroutine d_p_coupling(phys_state, phys_tend, pbuf2d, dyn_out)
 
    character(len=*), parameter :: subname = 'd_p_coupling'
    !----------------------------------------------------------------------------
+
+   call memstats_init(mpicom, iulog)
+   call memstats_log('d_p_coupling: start')
 
    nCellsSolve = dyn_out % nCellsSolve
    index_qv    = dyn_out % index_qv
@@ -151,6 +156,8 @@ subroutine d_p_coupling(phys_state, phys_tend, pbuf2d, dyn_out)
    call derived_phys(phys_state, phys_tend, pbuf2d)
    call t_stopf('derived_phys')
 
+   call memstats_log('d_p_coupling: end')
+
 end subroutine d_p_coupling
 
 !=========================================================================================
@@ -210,6 +217,8 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
 
    character(len=*), parameter :: subname = 'dp_coupling::p_d_coupling'
    !----------------------------------------------------------------------------
+
+   call memstats_log('p_d_coupling: start')
 
    nCellsSolve = dyn_in % nCellsSolve
    nCells      = dyn_in % nCells
@@ -282,6 +291,8 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
 
    call mpas_deallocate_scratch_field(tend_uzonal)
    call mpas_deallocate_scratch_field(tend_umerid)
+
+   call memstats_log('p_d_coupling: end')
 
 end subroutine p_d_coupling
 
