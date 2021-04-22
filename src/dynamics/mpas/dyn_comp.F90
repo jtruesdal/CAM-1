@@ -692,7 +692,7 @@ subroutine read_inidat(dyn_in)
 
    ! for integral in mass scaling                                                                                                                
    real(r8), allocatable :: preliminary_dry_surface_pressure(:), p_top(:), pm(:)
-   real(r8) :: target_avg_dry_surface_pressure, preliminary_avg_dry_surface_pressure
+   real(r8) :: target_avg_dry_surface_pressure, preliminary_avg_dry_surface_pressure, scaled_avg_dry_surface_pressure
    real(r8) :: sphere_surface_area, scaling_ratio
    real(r8) :: surface_integral, test_value
    logical, pointer :: mpas_scale_dry_air_mass
@@ -1044,17 +1044,12 @@ subroutine read_inidat(dyn_in)
    deallocate( mpas3d )
 
    theta_m(:,1:nCellsSolve) = theta(:,1:nCellsSolve) * (1.0_r8 + Rv_over_Rd * tracers(ixqv,:,1:nCellsSolve))
-   ! if (.not. analytic_ic_active()) then  ! scale dry-air mass
-   !   surface_integral = cam_mpas_global_sum_real(areaCell(1:nCellsSolve))
-   !   write(iulog,*) subname//': Cell area test value = ', surface_integral
-   !   test_value = sqrt(surface_integral/(4.0_r8*pi))
-   !   write(iulog,*) subname//': earth radius from area = ', test_value
-   ! end if
 
    call mpas_pool_get_config(domain_ptr % configs, 'config_scale_dry_air_mass', mpas_scale_dry_air_mass)
 
    if (mpas_scale_dry_air_mass) then
 
+      target_avg_dry_surface_pressure = 98288.0_r8
       allocate( p_top(nCellsSolve), preliminary_dry_surface_pressure(nCellsSolve), pm(plev) )
       ! (1) calculate pressure at the lid                                                                                                         
       do i=1, nCellsSolve
@@ -1073,14 +1068,30 @@ subroutine read_inidat(dyn_in)
       ! (3) compute average global dry surface pressure                                                                                           
       preliminary_dry_surface_pressure(1:nCellsSolve) =  preliminary_dry_surface_pressure(1:nCellsSolve)*areaCell(1:nCellsSolve)
       sphere_surface_area = cam_mpas_global_sum_real(areaCell(1:nCellsSolve))
-      preliminary_dry_surface_pressure = cam_mpas_global_sum_real(preliminary_dry_surface_pressure(1:nCellsSolve))
+      preliminary_avg_dry_surface_pressure = cam_mpas_global_sum_real(preliminary_dry_surface_pressure(1:nCellsSolve))
       preliminary_avg_dry_surface_pressure = preliminary_avg_dry_surface_pressure/sphere_surface_area
-      write(iulog,*) subname//': initial dry globally avg surface pressure (hPa) = ', preliminary_avg_dry_surface_pressure/100.
+      write (iulog,*) "-------------------------- set_dry_mass---------------------------------------------"
+      write(iulog,*) subname//': initial dry globally avg surface pressure (hPa) = ', preliminary_avg_dry_surface_pressure/100._r8
+      write(iulog,*) subname//': target dry globally avg surface pressure (hPa) = ', initial_global_ave_dry_ps/100._r8
 
       ! (4) scale dry air density                                                                                                                 
-      ! scaling_ratio = target_avg_dry_surface_pressure/preliminary_avg_dry_surface_pressure
-      scaling_ratio = 1.0
+      scaling_ratio = target_avg_dry_surface_pressure/preliminary_avg_dry_surface_pressure
+      ! scaling_ratio = 1.0
       rho(:,:) = rho(:,:)*scaling_ratio
+
+      ! (4a) recompute dry mass after scaling
+      do i=1, nCellsSolve
+         preliminary_dry_surface_pressure(i) = 0.0_r8
+         do k=1, plev
+            preliminary_dry_surface_pressure(i) = preliminary_dry_surface_pressure(i) + gravity*(zint(k+1,i)-zint(k,i))*rho(k,i)
+         end do
+      end do
+      preliminary_dry_surface_pressure(1:nCellsSolve) =  preliminary_dry_surface_pressure(1:nCellsSolve)*areaCell(1:nCellsSolve)
+      scaled_avg_dry_surface_pressure = cam_mpas_global_sum_real(preliminary_dry_surface_pressure(1:nCellsSolve))
+      scaled_avg_dry_surface_pressure = scaled_avg_dry_surface_pressure/sphere_surface_area
+
+      write(iulog,*) subname//': Average dry surface pressure after scaling (hPa) = ', scaled_avg_dry_surface_pressure/100._r8
+      write(iulog,*) subname//': Change in dry surface pressure (Pa) = ', scaled_avg_dry_surface_pressure - preliminary_avg_dry_surface_pressure
 
       ! (5) reset qv to conserve mass                                                                                                             
       tracers(ixqv,:,1:nCellsSolve) = tracers(ixqv,:,1:nCellsSolve)/scaling_ratio
