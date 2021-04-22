@@ -40,6 +40,8 @@ use cam_abortutils,     only: endrun
 
 use mpas_timekeeping,   only : MPAS_TimeInterval_type
 
+use cam_mpas_subdriver, only: cam_mpas_global_sum_real
+
 implicit none
 private
 save
@@ -111,6 +113,11 @@ type dyn_import_t
                                                   ! interface [dimensionless]             (nver)
    real(r8), dimension(:),     pointer :: fzp     ! Interp weight from k-1 layer midpoint to k
                                                   ! layer interface [dimensionless]       (nver)
+                                                  ! layer interface [dimensionless]       (nver
+   !
+   ! Invariant -- cell area
+   !
+   real(r8), dimension(:),     pointer :: areaCell ! cell area (m^2)
 
    !
    ! Invariant -- needed to compute edge-normal velocities
@@ -390,6 +397,7 @@ subroutine dyn_init(dyn_in, dyn_out)
    call mpas_pool_get_array(mesh_pool,  'zz',                     dyn_in % zz)
    call mpas_pool_get_array(mesh_pool,  'fzm',                    dyn_in % fzm)
    call mpas_pool_get_array(mesh_pool,  'fzp',                    dyn_in % fzp)
+   call mpas_pool_get_array(mesh_pool,  'areaCell',               dyn_in % areaCell)
 
    call mpas_pool_get_array(mesh_pool,  'east',                   dyn_in % east)
    call mpas_pool_get_array(mesh_pool,  'north',                  dyn_in % north)
@@ -624,7 +632,7 @@ subroutine read_inidat(dyn_in)
    ! Set initial conditions.  Either from analytic expressions or read from file.
 
    use cam_mpas_subdriver, only : domain_ptr, cam_mpas_update_halo, cam_mpas_cell_to_edge_winds
-   use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array
+   use mpas_pool_routines, only : mpas_pool_get_subpool, mpas_pool_get_array, mpas_pool_get_config
    use mpas_derived_types, only : mpas_pool_type
    use mpas_vector_reconstruction, only : mpas_reconstruct
    use mpas_constants, only : Rv_over_Rd => rvord
@@ -657,6 +665,7 @@ subroutine read_inidat(dyn_in)
                                      ! at layer interfaces            (nver+1,ncol)
    real(r8), pointer :: zz(:,:)      ! Vertical coordinate metric [dimensionless]
                                      ! at layer midpoints               (nver,ncol)
+   real(r8), pointer :: areaCell(:)  ! cell area (m^2)
    real(r8), pointer :: theta(:,:)   ! Potential temperature [K]        (nver,ncol)
    real(r8), pointer :: rho(:,:)     ! Dry density [kg/m^3]             (nver,ncol)
    real(r8), pointer :: ux(:,:)      ! Zonal veloc at center [m/s]      (nver,ncol)
@@ -680,6 +689,13 @@ subroutine read_inidat(dyn_in)
    real(r8), allocatable :: mpas3d(:,:,:)
 
    real(r8), allocatable :: qv(:), tm(:)
+
+   ! for integral in mass scaling                                                                                                                
+   real(r8), allocatable :: preliminary_dry_surface_pressure(:), p_top(:), pm(:)
+   real(r8) :: target_avg_dry_surface_pressure, preliminary_avg_dry_surface_pressure
+   real(r8) :: sphere_surface_area, scaling_ratio
+   real(r8) :: surface_integral, test_value
+   logical, pointer :: mpas_scale_dry_air_mass
 
    real(r8) :: dz, h
    logical  :: readvar
@@ -714,6 +730,7 @@ subroutine read_inidat(dyn_in)
 
    zint       => dyn_in % zint
    zz         => dyn_in % zz
+   areaCell   => dyn_in % areaCell
    theta      => dyn_in % theta
    rho        => dyn_in % rho
    ux         => dyn_in % ux
@@ -1027,6 +1044,68 @@ subroutine read_inidat(dyn_in)
    deallocate( mpas3d )
 
    theta_m(:,1:nCellsSolve) = theta(:,1:nCellsSolve) * (1.0_r8 + Rv_over_Rd * tracers(ixqv,:,1:nCellsSolve))
+   ! if (.not. analytic_ic_active()) then  ! scale dry-air mass
+   !   surface_integral = cam_mpas_global_sum_real(areaCell(1:nCellsSolve))
+   !   write(iulog,*) subname//': Cell area test value = ', surface_integral
+   !   test_value = sqrt(surface_integral/(4.0_r8*pi))
+   !   write(iulog,*) subname//': earth radius from area = ', test_value
+   ! end if
+
+   call mpas_pool_get_config(domain_ptr % configs, 'config_scale_dry_air_mass', mpas_scale_dry_air_mass)
+
+   if (mpas_scale_dry_air_mass) then
+
+      allocate( p_top(nCellsSolve), preliminary_dry_surface_pressure(nCellsSolve), pm(plev) )
+      ! (1) calculate pressure at the lid                                                                                                         
+      do i=1, nCellsSolve
+         p_top(i) = p0*(rgas*rho(plev,i)*theta_m(plev,i)/p0)**(cpair/(cpair-rgas))
+         p_top(i) = p_top(i) - gravity*0.5_r8*(zint(plev+1,i)-zint(plev,i))*rho(plev,i)*(1.0_r8+tracers(ixqv,plev,i))
+      end do
+
+      ! (2) integrate dry mass in column to compute                                                                                               
+      do i=1, nCellsSolve
+         preliminary_dry_surface_pressure(i) = 0.0_r8
+         do k=1, plev
+            preliminary_dry_surface_pressure(i) = preliminary_dry_surface_pressure(i) + gravity*(zint(k+1,i)-zint(k,i))*rho(k,i)
+         end do
+      end do
+
+      ! (3) compute average global dry surface pressure                                                                                           
+      preliminary_dry_surface_pressure(1:nCellsSolve) =  preliminary_dry_surface_pressure(1:nCellsSolve)*areaCell(1:nCellsSolve)
+      sphere_surface_area = cam_mpas_global_sum_real(areaCell(1:nCellsSolve))
+      preliminary_dry_surface_pressure = cam_mpas_global_sum_real(preliminary_dry_surface_pressure(1:nCellsSolve))
+      preliminary_avg_dry_surface_pressure = preliminary_avg_dry_surface_pressure/sphere_surface_area
+      write(iulog,*) subname//': initial dry globally avg surface pressure (hPa) = ', preliminary_avg_dry_surface_pressure/100.
+
+      ! (4) scale dry air density                                                                                                                 
+      ! scaling_ratio = target_avg_dry_surface_pressure/preliminary_avg_dry_surface_pressure
+      scaling_ratio = 1.0
+      rho(:,:) = rho(:,:)*scaling_ratio
+
+      ! (5) reset qv to conserve mass                                                                                                             
+      tracers(ixqv,:,1:nCellsSolve) = tracers(ixqv,:,1:nCellsSolve)/scaling_ratio
+
+      ! (6) integrate down the column to compute full pressure given the density and qv                                                           
+
+      do i=1,nCellsSolve
+         pm(plev) = p_top(i) + 0.5_r8*(zint(plev+1,i)-zint(plev,i))*gravity*rho(plev,i)*(1.0_r8+tracers(ixqv,plev,i))
+         do k=plev-1,1,-1
+            pm(k) = pm(k+1) + 0.5_r8*(zint(k+2,i)-zint(k+1,i))*gravity*rho(k+1,i)*(1.0_r8+tracers(ixqv,k+1,i)) &
+                            + 0.5_r8*(zint(k+1,i)-zint(k  ,i))*gravity*rho(k  ,i)*(1.0_r8+tracers(ixqv,k  ,i))
+         end do
+
+      ! (7) theta_m from the state equation, compute rho_zz and theta while we are here                                                           
+
+         do k=1,plev
+            theta_m(k,i) = (pm(k)/p0)**((cpair-rgas)/cpair)*p0/rgas/rho(k,i)
+            theta(k,i) = theta_m(k,i)/(1.0_r8 + Rv_over_Rd * tracers(ixqv,k,i))
+            rho_zz(k,i) = rho(k,i)/zz(k,i)
+         end do
+      end do
+
+      deallocate( p_top, preliminary_dry_surface_pressure, pm )
+
+   end if
 
    ! Update halos for initial state fields
    ! halo for 'u' updated in both branches of conditional above
@@ -1208,8 +1287,7 @@ subroutine cam_mpas_namelist_read(namelistFilename, configPool)
    real(r8)                :: mpas_epssm = 0.1_r8
    real(r8)                :: mpas_smdiv = 0.1_r8
    real(r8)                :: mpas_apvm_upwinding = 0.5_r8
-   logical                 :: mpas_h_ScaleWithMesh = .true.
-   real(r8)                :: mpas_zd = 22000.0_r8
+   logical                 :: mpas_h_ScaleWithMesh = .true.      
    real(r8)                :: mpas_xnutr = 0.2_r8
    real(r8)                :: mpas_cam_coef = 0.0_r8
    logical                 :: mpas_rayleigh_damp_u = .true.
@@ -1254,7 +1332,8 @@ subroutine cam_mpas_namelist_read(namelistFilename, configPool)
            mpas_epssm, &
            mpas_smdiv, &
            mpas_apvm_upwinding, &
-           mpas_h_ScaleWithMesh
+           mpas_h_ScaleWithMesh, &
+           mpas_scale_dry_air_mass
 
    namelist /damping/ &
            mpas_zd, &
@@ -1337,6 +1416,7 @@ subroutine cam_mpas_namelist_read(namelistFilename, configPool)
    call mpi_bcast(mpas_smdiv,                        1, mpi_real8,     masterprocid, mpicom, mpi_ierr)
    call mpi_bcast(mpas_apvm_upwinding,               1, mpi_real8,     masterprocid, mpicom, mpi_ierr)
    call mpi_bcast(mpas_h_ScaleWithMesh,              1, mpi_logical,   masterprocid, mpicom, mpi_ierr)
+   call mpi_bcast(mpas_scale_dry_air_mass,           1, mpi_logical,   masterprocid, mpicom, mpi_ierr)
 
    call mpas_pool_add_config(configPool, 'config_time_integration', mpas_time_integration)
    call mpas_pool_add_config(configPool, 'config_time_integration_order', mpas_time_integration_order)
@@ -1371,6 +1451,7 @@ subroutine cam_mpas_namelist_read(namelistFilename, configPool)
    call mpas_pool_add_config(configPool, 'config_smdiv', mpas_smdiv)
    call mpas_pool_add_config(configPool, 'config_apvm_upwinding', mpas_apvm_upwinding)
    call mpas_pool_add_config(configPool, 'config_h_ScaleWithMesh', mpas_h_ScaleWithMesh)
+   call mpas_pool_add_config(configPool, 'config_scale_dry_air_mass', mpas_scale_dry_air_mass)
 
    ! Read namelist group &damping
    if (masterproc) then
@@ -1506,6 +1587,7 @@ subroutine cam_mpas_namelist_read(namelistFilename, configPool)
       write(iulog,*) '   mpas_smdiv = ', mpas_smdiv
       write(iulog,*) '   mpas_apvm_upwinding = ', mpas_apvm_upwinding
       write(iulog,*) '   mpas_h_ScaleWithMesh = ', mpas_h_ScaleWithMesh
+      write(iulog,*) '   mpas_scale_dry_air_mass = ', mpas_scale_dry_air_mass
       write(iulog,*) '   mpas_zd = ', mpas_zd
       write(iulog,*) '   mpas_xnutr = ', mpas_xnutr
       write(iulog,*) '   mpas_cam_coef = ', mpas_cam_coef
