@@ -1072,7 +1072,7 @@ subroutine read_inidat(dyn_in)
       preliminary_avg_dry_surface_pressure = preliminary_avg_dry_surface_pressure/sphere_surface_area
       write (iulog,*) "-------------------------- set_dry_mass---------------------------------------------"
       write(iulog,*) subname//': initial dry globally avg surface pressure (hPa) = ', preliminary_avg_dry_surface_pressure/100._r8
-      write(iulog,*) subname//': target dry globally avg surface pressure (hPa) = ', initial_global_ave_dry_ps/100._r8
+      write(iulog,*) subname//': target dry globally avg surface pressure (hPa) = ', target_avg_dry_surface_pressure/100._r8
 
       ! (4) scale dry air density                                                                                                                 
       scaling_ratio = target_avg_dry_surface_pressure/preliminary_avg_dry_surface_pressure
