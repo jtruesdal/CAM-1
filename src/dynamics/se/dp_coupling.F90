@@ -375,44 +375,10 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in, tl_f, tl_qdp)
                   phys_state(lchnk)%q(icol,ilyr,m) = factor*phys_state(lchnk)%q(icol,ilyr,m)
                end if
             end do
-          end do
-        end do
-       call thermodynamic_consistency( &
-            phys_state(lchnk), phys_tend(lchnk), ncols, pver,lchnk)
-   end do
-
-
-   call t_startf('pd_copy')
-   if (local_dp_map) then
-
-      !$omp parallel do num_threads(max_num_threads) private (lchnk, ncols, pgcols, icol, idmb1, idmb2, idmb3, ie, ioff, ilyr, m)
-      do lchnk = begchunk, endchunk
-         ncols = get_ncols_p(lchnk)
-         call get_gcol_all_p(lchnk, pcols, pgcols)
-
-         ! test code -- does nothing unless cpp macro debug_coupling is defined.
-         call test_mapping_overwrite_tendencies(phys_state(lchnk), phys_tend(lchnk), ncols, &
-            lchnk, q_prev(1:ncols,:,:,lchnk), dyn_in%fvm)
-
-         do icol = 1, ncols
-            call get_gcol_block_d(pgcols(icol), 1, idmb1, idmb2, idmb3)
-            ie   = idmb3(1)
-            ioff = idmb2(1)
-
-            do ilyr = 1, pver
-               dp_phys(ioff,ilyr,ie)  = phys_state(lchnk)%pdeldry(icol,ilyr)
-               T_tmp(ioff,ilyr,ie)    = phys_tend(lchnk)%dtdt(icol,ilyr)
-               uv_tmp(ioff,1,ilyr,ie) = phys_tend(lchnk)%dudt(icol,ilyr)
-               uv_tmp(ioff,2,ilyr,ie) = phys_tend(lchnk)%dvdt(icol,ilyr)
-               do m = 1, pcnst
-                  dq_tmp(ioff,ilyr,m,ie) = (phys_state(lchnk)%q(icol,ilyr,m) - &
-                                            q_prev(icol,ilyr,m,lchnk))
-               end do
-            end do
          end do
       end do
       call thermodynamic_consistency( &
-           phys_state(lchnk), phys_tend(lchnk), ncols, pver)
+           phys_state(lchnk), phys_tend(lchnk), ncols, pver,lchnk)
    end do
 
    call t_startf('pd_copy')
@@ -784,14 +750,14 @@ subroutine thermodynamic_consistency(phys_state, phys_tend, ncols, pver, lchnk)
    ! Note: mixing ratios are assumed to be dry.
    !
    use dimensions_mod,    only: lcp_moist
-   use physconst,         only: get_cp, cpair
+   use physconst,         only: get_cp
    use control_mod,       only: phys_dyn_cp
    use physconst,         only: cpair, cpairv
 
    type(physics_state), intent(in)    :: phys_state
-   type(physics_tend ), intent(inout) :: phys_tend  
+   type(physics_tend ), intent(inout) :: phys_tend
    integer,  intent(in)               :: ncols, pver, lchnk
-  
+
    real(r8):: inv_cp(ncols,pver)
    !----------------------------------------------------------------------------
 
@@ -805,7 +771,6 @@ subroutine thermodynamic_consistency(phys_state, phys_tend, ncols, pver, lchnk)
      !
      call get_cp(1,ncols,1,pver,1,1,pcnst,phys_state%q(1:ncols,1:pver,:),.true.,inv_cp)
      phys_tend%dtdt(1:ncols,1:pver) = phys_tend%dtdt(1:ncols,1:pver)*cpairv(1:ncols,1:pver,lchnk)*inv_cp
-
    end if 
 end subroutine thermodynamic_consistency
 
