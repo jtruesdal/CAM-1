@@ -788,7 +788,7 @@ subroutine dyn_run(dyn_state)
           wi_dyn,wr_dyn,ws_dyn,wg_dyn,tt_dyn,mo_dyn,mr_dyn,gravit,cpair,rearth,omega,fv3_lcp_moist,&
           fv3_lcv_moist)
 #else
-          Atm(mytile)%diss_est, Atm(n)%inline_mp)
+          Atm(mytile)%diss_est, Atm(mytile)%inline_mp)
 #endif
 
      if (ngrids > 1 .and. (psc < p_split .or. p_split < 0)) then
