@@ -66,7 +66,7 @@ touch_filepath:
 # if a source is of form .F90.in strip the .in before creating the list of objects
 
 SKIPFILES := fv_iau_mod.F90
-SOURCES := $(filter-out $(SKIPFILES), $(shell cat Srcfiles)
+SOURCES := $(filter-out $(SKIPFILES), $(shell cat Srcfiles))
 BASENAMES := $(basename $(basename $(SOURCES)))
 OBJS    := $(addsuffix .o, $(BASENAMES))
 INCS    := $(foreach dir,$(cpp_dirs),-I$(dir))
