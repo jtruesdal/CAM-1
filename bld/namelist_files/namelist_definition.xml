@@ -8641,6 +8641,15 @@ time step).
 Default: 2
 </entry>
 
+<entry id="fv3_q_split" type="integer" category="dyn_fv3"
+       group="fv_core_nml" valid_values="" >
+Integer: number of time steps for sub-cycled tracer advection. 
+0 by default (recommended), in which case the model determines 
+the number of time steps from the global maximum wind speed at 
+each call to the tracer advection. 
+Default: 0
+</entry>
+
 <entry id="fv3_layout" type="integer(2)" category="dyn_fv3"
        group="fv_core_nml" valid_values="" >
 Integer(2): Processor layout on each tile. The number of PEs

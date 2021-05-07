@@ -2744,6 +2744,7 @@
 <fv3_kord_tr                                                                > 9         </fv3_kord_tr>
 <fv3_kord_wz                                                                > 9         </fv3_kord_wz>
 <fv3_k_split                                                                > 2         </fv3_k_split>
+<fv3_q_split                                                                > 0         </fv3_q_split>
 <fv3_make_nh                                                                > .false.   </fv3_make_nh>
 <fv3_na_init                                                                > 0         </fv3_na_init>
 <fv3_nord                                                                   > 3         </fv3_nord>

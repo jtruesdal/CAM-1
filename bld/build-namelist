@@ -3589,6 +3589,7 @@ if ( $dyn eq 'fv3') {
     add_default($nl, 'fv3_hord_vt');
     add_default($nl, 'fv3_hydrostatic');
     add_default($nl, 'fv3_k_split');
+    add_default($nl, 'fv3_q_split');
     add_default($nl, 'fv3_ke_bg');
     add_default($nl, 'fv3_kord_mt');
     add_default($nl, 'fv3_kord_tm');
