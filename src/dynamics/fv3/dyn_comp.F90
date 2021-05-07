@@ -130,7 +130,7 @@ subroutine dyn_readnl(nlfilename)
 
   integer            :: fv3_consv_te, fv3_dnats, fv3_fv_sg_adj, fv3_grid_type, &
                         fv3_hord_dp, fv3_hord_mt, fv3_hord_tm, fv3_hord_tr, fv3_hord_vt, &
-                        fv3_io_layout(2), fv3_k_split, fv3_kord_mt, fv3_kord_tm, fv3_kord_tr, &
+                        fv3_io_layout(2), fv3_k_split, fv3_q_split,fv3_kord_mt, fv3_kord_tm, fv3_kord_tr, &
                         fv3_kord_wz, fv3_layout(2), fv3_n_split, fv3_n_sponge, fv3_na_init, &
                         fv3_ncnst, fv3_nord, fv3_npx, fv3_npy, fv3_npz, fv3_ntiles, &
                         fv3_nwat, fv3_print_freq
@@ -178,7 +178,7 @@ subroutine dyn_readnl(nlfilename)
        fv3_delt_max,fv3_dnats,fv3_do_sat_adj,fv3_do_vort_damp,fv3_dwind_2d, &
        fv3_fill,fv3_fv_debug,fv3_fv_diag,fv3_fv_sg_adj,fv3_grid_type, &
        fv3_hord_dp,fv3_hord_mt,fv3_hord_tm,fv3_hord_tr,fv3_hord_vt, &
-       fv3_hydrostatic,fv3_io_layout,fv3_k_split,fv3_ke_bg,fv3_kord_mt, &
+       fv3_hydrostatic,fv3_io_layout,fv3_k_split,fv3_q_split,fv3_ke_bg,fv3_kord_mt, &
        fv3_kord_tm,fv3_kord_tr,fv3_kord_wz,fv3_layout,fv3_make_nh, &
        fv3_n_split,fv3_n_sponge,fv3_na_init,fv3_ncnst,fv3_no_dycore, &
        fv3_nord,fv3_npx,fv3_npy,fv3_npz,fv3_ntiles,fv3_nwat, &
@@ -275,6 +275,7 @@ subroutine dyn_readnl(nlfilename)
      write (iulog,*) '  fv3_hydrostatic           = ',fv3_hydrostatic
      write (iulog,*) '  fv3_io_layout             = ',fv3_io_layout
      write (iulog,*) '  fv3_k_split               = ',fv3_k_split
+     write (iulog,*) '  fv3_q_split               = ',fv3_q_split
      write (iulog,*) '  fv3_ke_bg                 = ',fv3_ke_bg
      write (iulog,*) '  fv3_kord_mt               = ',fv3_kord_mt
      write (iulog,*) '  fv3_kord_tm               = ',fv3_kord_tm
