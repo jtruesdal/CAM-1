@@ -128,7 +128,7 @@ subroutine dyn_readnl(nlfilename)
 
   ! fv_core namelist variables - these namelist variables defined in fv3 library without fv3_
 
-  integer            :: fv3_consv_te, fv3_dnats, fv3_fv_sg_adj, fv3_grid_type, &
+  integer            :: fv3_dnats, fv3_fv_sg_adj, fv3_grid_type, &
                         fv3_hord_dp, fv3_hord_mt, fv3_hord_tm, fv3_hord_tr, fv3_hord_vt, &
                         fv3_io_layout(2), fv3_k_split, fv3_q_split,fv3_kord_mt, fv3_kord_tm, fv3_kord_tr, &
                         fv3_kord_wz, fv3_layout(2), fv3_n_split, fv3_n_sponge, fv3_na_init, &
@@ -137,7 +137,7 @@ subroutine dyn_readnl(nlfilename)
 
   real(r8)           :: fv3_beta, fv3_d2_bg, fv3_d2_bg_k1, fv3_d2_bg_k2, fv3_d4_bg, &
                         fv3_d_con, fv3_d_ext, fv3_dddmp, fv3_delt_max, fv3_ke_bg, &
-                        fv3_rf_cutoff, fv3_tau, fv3_vtdm4
+                        fv3_rf_cutoff, fv3_tau, fv3_vtdm4, fv3_consv_te
 
   logical            :: fv3_adjust_dry_mass, fv3_consv_am, fv3_do_sat_adj, fv3_do_vort_damp, &
                         fv3_dwind_2d, fv3_fill, fv3_fv_debug, fv3_fv_diag, fv3_hydrostatic, &
@@ -688,7 +688,7 @@ subroutine dyn_init(dyn_in, dyn_out)
    fv3time = set_date(year,month,day,hour,min,sec)
    Atm(mytile)%Time_init = fv3time
    call diag_manager_init()
-!jt   call fv_diag_init(Atm(mytile:mytile), Atm(mytile)%atmos_axes, fv3time, npx, npy, nlev, Atm(mytile)%flagstruct%p_ref)
+   call fv_diag_init(Atm(mytile:mytile), Atm(mytile)%atmos_axes, fv3time, npx, npy, nlev, Atm(mytile)%flagstruct%p_ref)
 
 end subroutine dyn_init
 

@@ -86,6 +86,12 @@ def buildcpp(case):
     config_opts = ["-s", "-fc_type", compiler, "-dyn", cam_dycore,
                    "-hgrid", atm_grid, "-cpl", comp_interface,
                    "-usr_src", os.path.join(caseroot, "SourceMods", "src.cam")]
+    config_opts = ["-s", "-fc_type", compiler, "-dyn", cam_dycore,
+                   "-hgrid", atm_grid, "-cpl", comp_interface]
+    if cam_dycore == 'fv3':
+        srccam=os.path.join(caseroot, "SourceMods", "src.cam")
+        srcfv3=os.path.join(caseroot, "SourceMods", "src.cam.libfv3core")
+        config_opts += ["-usr_src", "{},{}".format(srccam, srcfv3)]
 
     if nlev:
         config_opts += ["-nlev", nlev]
@@ -124,6 +130,9 @@ def buildcpp(case):
         config_opts += ["-cosp_libdir", os.path.join(exeroot, "atm", "obj", "cosp")]
 
     if cam_dycore == 'mpas':
+        srccam=os.path.join(caseroot, "SourceMods", "src.cam")
+        srcmpas=os.path.join(caseroot, "SourceMods", "src.cam.libfv3core")
+        config_opts += ["-usr_src", "{},{}".format(srccam, srcmpas)]
         config_opts += ["-mpas_libdir", os.path.join(exeroot, "atm", "obj", "mpas")]
 
     camconf = os.path.join(caseroot, "Buildconf", "camconf")

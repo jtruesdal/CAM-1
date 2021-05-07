@@ -1,4 +1,3 @@
-.SUFFIXES : .F .f .c .o .a .f90 .f95
 ########################################################################
 #
 # The Makefile for building the FV3 library is created by CAM's configure
@@ -25,6 +24,9 @@
 # FC_FLAGS     Fortran compiler flags
 #
 ########################################################################
+AR	:= ar
+RM	:= rm
+CP	:= cp
 
 # Load dependency search path.
 cpp_dirs := .
@@ -35,7 +37,7 @@ cpp_dirs += $(shell cat Filepath)
 VPATH := $(foreach dir,$(cpp_dirs),$(wildcard $(dir)))
 VPATH := $(subst $(space),:,$(VPATH))
 
-INCS    := $(foreach dir,$(cpp_dirs),-I$(dir))
+###INCS    := $(foreach dir,$(cpp_dirs),-I$(dir))
 
 F90      := $(FC)
 C90      := $(CC)
@@ -50,20 +52,44 @@ ifeq ($(strip $(COMPILER)),gnu)
   #  CFLAGS += -w
 endif
 
-OBJS = a2b_edge.o boundary.o coarse_graining.o coarse_grained_restart_files.o dyn_core.o external_ic.o \
-       external_sst.o fv_arrays.o fv_cmp.o fv_control.o \
-       fv_diagnostics.o fv_diag_column.o fv_dynamics.o fv_eta.o fv_fill.o \
-       fv_grid_tools.o fv_grid_utils.o fv_io.o fv_mapz.o \
-       fv_mp_mod.o fv_nesting.o fv_nudge.o fv_regional_bc.o \
-       fv_restart.o fv_sg.o fv_surf_map.o fv_timing.o \
-       fv_tracer2d.o fv_treat_da_inc.o fv_update_phys.o gfdl_cloud_microphys.o \
-       init_hydro.o module_mp_radar.o nh_core.o nh_utils.o sim_nc_mod.o \
-       sorted_index.o sw_core.o test_cases.o tp_core.o
+complib:  $(COMPLIB) Depends
 
-complib: libfv3core.a
+#-------------------------------------------------------------------------------
+# Build & include dependency files
+#-------------------------------------------------------------------------------
 
-libfv3core.a: $(OBJS)
-	ar cr libfv3core.a $(OBJS)
+touch_filepath:
+	touch Filepath
+
+# Get list of files and build dependency file for all .o files
+#   using perl scripts mkSrcfiles and mkDepends
+# if a source is of form .F90.in strip the .in before creating the list of objects
+
+SOURCES := $(shell cat Srcfiles)
+BASENAMES := $(basename $(basename $(SOURCES)))
+OBJS    := $(addsuffix .o, $(BASENAMES))
+INCS    := $(foreach dir,$(cpp_dirs),-I$(dir))
+
+CURDIR := $(shell pwd)
+
+Depends: Srcfiles Deppath
+	$(CASETOOLS)/mkDepends $(USER_MKDEPENDS_OPTS) Deppath Srcfiles > $@
+
+Deppath: Filepath
+	$(CP) -f Filepath $@
+	@echo "$(MINCROOT)" >> $@
+
+#Srcfiles:
+#	@echo "$(SOURCES)" > $@
+
+Srcfiles: Filepath
+	$(CASETOOLS)/mkSrcfiles
+
+#Filepath:
+#	@echo "$(VPATH)" > $@
+
+
+#-------------------------------------------------------------------------------
 
 db_files:
 	@echo " "
@@ -90,101 +116,48 @@ gfdl_cloud_microphys.o: gfdl_cloud_microphys.F90
 module_mp_radar.o: module_mp_radar.F90
 	$(F90) -c $(INCLDIR) $(INCS) $(F90FLAGS) -fdec $<
 endif
+#-------------------------------------------------------------------------------
+# build rules:
+#-------------------------------------------------------------------------------
+.SUFFIXES:
+.SUFFIXES: .F90 .F .f90 .f .c .cpp .o .in
 
-%.o: %.f90
-	$(F90) $(F90FLAGS) $(INCLDIR) $(INCS) -c  $<
-%.o: %.F90
-	$(F90) $(F90FLAGS) $(INCLDIR) $(INCS) -c  $<
-%.o: %.c
-	$(C90) $(CFLAGS) $(INCLDIR) $(INCS) -c  $<
+ifdef INCLUDE_DIR
+  $(COMPLIB): $(OBJS)
+	$(AR) -r $(COMPLIB) $(OBJS)
+	$(CP) *.$(MOD_SUFFIX) *.h $(INCLUDE_DIR)
+else
+  $(COMPLIB): $(OBJS)
+	$(AR) -r $(COMPLIB) $(OBJS)
+endif
 
-# Dependencies (FV3 library)
-# Declare all module files used to build each object.
-a2b_edge.o : a2b_edge.F90 fv_arrays_mod.mod fv_grid_utils_mod.mod   
-boundary.o : boundary.F90 fv_arrays_mod.mod fv_timing_mod.mod fv_mp_mod.mod   
-coarse_graining.o : coarse_graining.F90 fv_mapz_mod.mod
-coarse_grained_restart_files.o : coarse_grained_restart_files.F90 coarse_graining_mod.mod fv_arrays_mod.mod
-dyn_core.o : dyn_core.F90 fv_update_phys_mod.mod a2b_edge_mod.mod fv_arrays_mod.mod fv_nwp_nudge_mod.mod fv_regional_mod.mod fv_mp_mod.mod nh_core_mod.mod test_cases_mod.mod boundary_mod.mod fv_timing_mod.mod fv_diagnostics_mod.mod sw_core_mod.mod tp_core_mod.mod   
-external_ic.o : external_ic.F90 fv_mapz_mod.mod fv_io_mod.mod fv_eta_mod.mod fv_arrays_mod.mod fv_regional_mod.mod sim_nc_mod.mod fv_surf_map_mod.mod boundary_mod.mod fv_grid_utils_mod.mod fv_fill_mod.mod fv_timing_mod.mod fv_diagnostics_mod.mod external_sst_mod.mod init_hydro_mod.mod fv_nwp_nudge_mod.mod fv_mp_mod.mod test_cases_mod.mod   
-external_sst.o : external_sst.F90    
-fv_arrays.o : fv_arrays.F90    
-fv_cmp.o : fv_cmp.F90 fv_arrays_mod.mod gfdl_cloud_microphys_mod.mod fv_mp_mod.mod   
-fv_control.o : fv_control.F90 fv_io_mod.mod fv_eta_mod.mod fv_arrays_mod.mod fv_grid_utils_mod.mod fv_diagnostics_mod.mod fv_timing_mod.mod fv_grid_tools_mod.mod fv_mp_mod.mod fv_restart_mod.mod test_cases_mod.mod   
-fv_diagnostics.o : fv_diagnostics.F90 fv_mapz_mod.mod fv_eta_mod.mod fv_arrays_mod.mod fv_sg_mod.mod fv_surf_map_mod.mod fv_grid_utils_mod.mod a2b_edge_mod.mod gfdl_cloud_microphys_mod.mod fv_mp_mod.mod
-fv_diag_column.o : fv_diag_column.F90 fv_arrays_mod.mod fv_grid_utils_mod.mod fv_sg_mod.mod
-fv_dynamics.o : fv_dynamics.F90 fv_mapz_mod.mod fv_arrays_mod.mod fv_regional_mod.mod fv_sg_mod.mod boundary_mod.mod fv_grid_utils_mod.mod fv_diagnostics_mod.mod fv_timing_mod.mod fv_fill_mod.mod dyn_core_mod.mod fv_nesting_mod.mod fv_tracer2d_mod.mod fv_nwp_nudge_mod.mod fv_mp_mod.mod   
-fv_eta.o : fv_eta.F90 fv_mp_mod.mod   
-fv_fill.o : fv_fill.F90    
-fv_grid_tools.o : fv_grid_tools.F90 fv_arrays_mod.mod fv_grid_utils_mod.mod fv_timing_mod.mod fv_mp_mod.mod sorted_index_mod.mod   
-fv_grid_utils.o : fv_grid_utils.F90 fv_eta_mod.mod fv_arrays_mod.mod fv_timing_mod.mod external_sst_mod.mod fv_mp_mod.mod   
-fv_io.o : fv_io.F90 fv_mapz_mod.mod fv_eta_mod.mod fv_arrays_mod.mod external_sst_mod.mod fv_mp_mod.mod   
-fv_mapz.o : fv_mapz.F90 fv_arrays_mod.mod fv_grid_utils_mod.mod fv_timing_mod.mod fv_fill_mod.mod fv_cmp_mod.mod fv_mp_mod.mod   
-fv_mp_mod.o : fv_mp_mod.F90 fv_arrays_mod.mod   
-fv_nesting.o : fv_nesting.F90 fv_mapz_mod.mod fv_arrays_mod.mod fv_sg_mod.mod boundary_mod.mod fv_grid_utils_mod.mod fv_diagnostics_mod.mod fv_timing_mod.mod init_hydro_mod.mod fv_mp_mod.mod fv_restart_mod.mod sw_core_mod.mod   
-fv_nudge.o : fv_nudge.F90 fv_mapz_mod.mod fv_arrays_mod.mod sim_nc_mod.mod fv_grid_utils_mod.mod fv_timing_mod.mod fv_diagnostics_mod.mod external_sst_mod.mod fv_mp_mod.mod tp_core_mod.mod   
-fv_regional_bc.o : fv_regional_bc.F90 fv_mapz_mod.mod fv_eta_mod.mod fv_arrays_mod.mod fv_grid_utils_mod.mod fv_fill_mod.mod fv_diagnostics_mod.mod fv_mp_mod.mod   
-fv_restart.o : fv_restart.F90 fv_io_mod.mod fv_eta_mod.mod fv_arrays_mod.mod fv_treat_da_inc_mod.mod external_ic_mod.mod fv_surf_map_mod.mod boundary_mod.mod fv_grid_utils_mod.mod fv_timing_mod.mod fv_diagnostics_mod.mod init_hydro_mod.mod fv_mp_mod.mod test_cases_mod.mod   
-fv_sg.o : fv_sg.F90 gfdl_cloud_microphys_mod.mod fv_mp_mod.mod   
-fv_surf_map.o : fv_surf_map.F90 fv_arrays_mod.mod fv_grid_utils_mod.mod fv_timing_mod.mod fv_mp_mod.mod   
-fv_timing.o : fv_timing.F90 fv_mp_mod.mod   
-fv_tracer2d.o : fv_tracer2d.F90 fv_arrays_mod.mod fv_regional_mod.mod boundary_mod.mod fv_timing_mod.mod fv_mp_mod.mod tp_core_mod.mod   
-fv_treat_da_inc.o : fv_treat_da_inc.F90 fv_arrays_mod.mod sim_nc_mod.mod fv_grid_utils_mod.mod fv_mp_mod.mod   
-fv_update_phys.o : fv_update_phys.F90 fv_mapz_mod.mod fv_eta_mod.mod fv_arrays_mod.mod boundary_mod.mod fv_grid_utils_mod.mod fv_diagnostics_mod.mod fv_timing_mod.mod fv_nwp_nudge_mod.mod fv_mp_mod.mod fv_nesting_mod.mod
-gfdl_cloud_microphys.o : gfdl_cloud_microphys.F90 module_mp_radar.mod   
-init_hydro.o : init_hydro.F90 fv_arrays_mod.mod fv_grid_utils_mod.mod fv_mp_mod.mod   
-module_mp_radar.o : module_mp_radar.F90    
-nh_core.o : nh_core.F90 nh_utils_mod.mod tp_core_mod.mod   
-nh_utils.o : nh_utils.F90 fv_arrays_mod.mod sw_core_mod.mod tp_core_mod.mod   
-sim_nc_mod.o : sim_nc_mod.F90    
-sorted_index.o : sorted_index.F90 fv_arrays_mod.mod   
-sw_core.o : sw_core.F90 fv_arrays_mod.mod a2b_edge_mod.mod fv_mp_mod.mod test_cases_mod.mod tp_core_mod.mod   
-test_cases.o : test_cases.F90 fv_arrays_mod.mod fv_eta_mod.mod fv_sg_mod.mod fv_surf_map_mod.mod fv_grid_utils_mod.mod fv_diagnostics_mod.mod fv_grid_tools_mod.mod init_hydro_mod.mod fv_mp_mod.mod   
-tp_core.o : tp_core.F90 fv_arrays_mod.mod fv_grid_utils_mod.mod fv_mp_mod.mod   
+.c.o:
+	$(CC) -c $(INCLDIR) $(INCS) $(CFLAGS) $(CPPDEFS) $<
+.F.o:
+	$(FC) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FIXEDFLAGS) $<
+.f.o:
+	$(FC) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FIXEDFLAGS) $<
+.f90.o:
+	$(FC) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FREEFLAGS)  $<
+.F90.o:
+	$(FC) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FREEFLAGS) $(CONTIGUOUS_FLAG) $<
+.cpp.o:
+	$(CXX) -c $(INCLDIR) $(INCS) $(CXXFLAGS)  $<
 
-# The following section relates each module to the corresponding file.
+%.F90: %.F90.in
+	$(CIMEROOT)/src/externals/genf90/genf90.pl $< > $@
 
-a2b_edge_mod.mod : a2b_edge.o
-boundary_mod.mod : boundary.o
-coarse_graining_mod.mod : coarse_graining.o
-coarse_grained_restart_files_mod.mod : coarse_grained_restart_files.o
-dyn_core_mod.mod : dyn_core.o
-external_ic_mod.mod : external_ic.o
-external_sst_mod.mod : external_sst.o
-fv_arrays_mod.mod : fv_arrays.o
-fv_cmp_mod.mod : fv_cmp.o
-fv_diagnostics_mod.mod : fv_diagnostics.o
-fv_diag_column_mod.mod : fv_diag_column.o
-fv_eta_mod.mod : fv_eta.o
-fv_fill_mod.mod : fv_fill.o
-fv_grid_tools_mod.mod : fv_grid_tools.o
-fv_grid_utils_mod.mod : fv_grid_utils.o
-fv_io_mod.mod : fv_io.o
-fv_mapz_mod.mod : fv_mapz.o
-fv_mp_mod.mod : fv_mp_mod.o
-fv_nesting_mod.mod : fv_nesting.o
-fv_nwp_nudge_mod.mod : fv_nudge.o
-fv_regional_mod.mod : fv_regional_bc.o
-fv_restart_mod.mod : fv_restart.o
-fv_sg_mod.mod : fv_sg.o
-fv_surf_map_mod.mod : fv_surf_map.o
-fv_timing_mod.mod : fv_timing.o
-fv_tracer2d_mod.mod : fv_tracer2d.o
-fv_treat_da_inc_mod.mod : fv_treat_da_inc.o
-fv_update_phys_mod.mod : fv_update_phys.o
-gfdl_cloud_microphys_mod.mod : gfdl_cloud_microphys.o
-init_hydro_mod.mod : init_hydro.o
-module_mp_radar.mod : module_mp_radar.o
-nh_core_mod.mod : nh_core.o
-nh_utils_mod.mod : nh_utils.o
-sim_nc_mod.mod : sim_nc_mod.o
-sorted_index_mod.mod : sorted_index.o
-sw_core_mod.mod : sw_core.o
-test_cases_mod.mod : test_cases.o
-tp_core_mod.mod : tp_core.o
-
-#
 clean_objs:
 	rm -f $(OBJS) *.mod *.o
 
 clean:
-	rm -f libfv3core.a $(OBJS) *.mod *.o
+	rm -f $(COMPLIB) $(OBJS) *.mod *.o
+
+# the if-tests prevent DEPS files from being created when they're not needed
+ifneq ($(MAKECMDGOALS), db_files)
+ifneq ($(MAKECMDGOALS), db_flags)
+ifeq (,$(findstring clean,$(MAKECMDGOALS)))
+    -include Depends $(CASEROOT)/Depends.$(COMPILER) $(CASEROOT)/Depends.$(MACH) $(CASEROOT)/Depends.$(MACH).$(COMPILER)
+endif
+endif
+endif

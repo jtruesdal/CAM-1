@@ -2046,8 +2046,16 @@ sub write_fv3core_filepath
 
     $fh->open(">$file") or die "** can't open filepath file: $file\n";
     my $camsrcdir   = $cfg_ref->get('cam_dir');
-    my $CASEROOT = "$ENV{'CASEROOT'}";
-    print $fh "$CASEROOT/SourceMods/src.cam\n";
+
+    # User specified source directories.
+    if ($usr_src  =~ /\S+/) {
+        my @dirs = split ',', $usr_src;
+        while ( my $dir = shift @dirs ) {
+            if ($dir =~ m/libfv3core/) {print $fh "$dir\n";}
+        }
+    }
+#    my $CASEROOT = "$ENV{CASEROOT}";
+#    print $fh "$CASEROOT/SourceMods/src.cam.libfv3core\n";
     print $fh "$camsrcdir/src/dynamics/fv3/microphys\n";
     print $fh "$camsrcdir/src/dynamics/fv3/atmos_cubed_sphere\n";
     print $fh "$camsrcdir/src/dynamics/fv3/atmos_cubed_sphere/model\n";
@@ -2092,13 +2100,9 @@ sub write_filepath
     if ($usr_src  =~ /\S+/) {
         my @dirs = split ',', $usr_src;
         while ( my $dir = shift @dirs ) {
-            print $fh "$dir\n";
+            if ($dir !~ /cam\.lib/) {print $fh "$dir\n";}
         }
     }
-
-    # CESM has a standard source mods location.
-    my $CASEROOT = "$ENV{'CASEROOT'}";
-    print $fh "$CASEROOT/SourceMods/src.cam\n";
 
     # offline unit driver (defaults to stub)
     print $fh "$camsrcdir/src/unit_drivers\n";

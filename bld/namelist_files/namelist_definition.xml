@@ -8224,7 +8224,7 @@ Logical: whether to enable Angular momentum fixer.
 Default: FALSE
 </entry>
 
-<entry id="fv3_consv_te" type="integer" category="dyn_fv3"
+<entry id="fv3_consv_te" type="real" category="dyn_fv3"
        group="fv_core_nml" valid_values="" >
 Real: fraction of total energy lost during the adiabatic integration
 between calls of the physics, to be added back globally as heat;
