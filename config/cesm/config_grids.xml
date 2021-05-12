@@ -1592,12 +1592,18 @@
 
     <domain name="mpasa480">
       <nx>2562</nx> <ny>1</ny>
+      <file grid="atm|lnd" mask="gx1v7">$DIN_LOC_ROOT/share/domains/domain.lnd.mpasa480_gx1v7.201001.nc</file>
+      <file grid="ocnice"  mask="gx1v7">$DIN_LOC_ROOT/share/domains/domain.ocn.mpasa480_gx1v7.201001.nc</file>
       <desc>MPAS-A 480-km quasi-uniform mesh:</desc>
+      <support>Test support only</support>
     </domain>
     <domain name="mpasa120">
       <nx>40962</nx> <ny>1</ny>
+      <file grid="atm|lnd" mask="gx1v7">$DIN_LOC_ROOT/share/domains/domain.lnd.mpasa120_gx1v7.201215.nc</file>
+      <file grid="ocnice"  mask="gx1v7">$DIN_LOC_ROOT/share/domains/domain.ocn.mpasa120_gx1v7.201215.nc</file>
       <mesh driver="nuopc">$DIN_LOC_ROOT/share/meshes/mpasa120z32_ESMFmesh_cdf5_c20210120.nc</mesh>
       <desc>MPAS-A 120-km quasi-uniform mesh:</desc>
+      <support>Test support only</support>
     </domain>
     <domain name="mpasa60">
       <nx>163842</nx> <ny>1</ny>
