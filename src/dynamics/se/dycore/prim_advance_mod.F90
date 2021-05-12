@@ -564,7 +564,7 @@ contains
 !      call biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,&
 !           dp3d_ref=dp3d_ref,T_ref=T_ref)
       call biharmonic_wk_dp3d(elem,dptens,dpflux,ttens,vtens,deriv,edge3,hybrid,nt,nets,nete,kbeg,kend,hvcoord,&
-           dp3d_ref=dp3d_ref,T_ref=T_ref,pmid_ref=pmid_ref)
+           dp3d_ref=dp3d_ref,pmid_ref=pmid_ref)
 
       do ie=nets,nete
         ! compute mean flux
@@ -1265,9 +1265,9 @@ contains
          !  T1 = .0065*Tref*Cp/g ! = ~191
          !  T0 = Tref-T1         ! = ~97
          !
-
          T1 = lapse_rate*Tref*cpair/gravit
          T0 = Tref-T1
+
          if (hvcoord%hybm(k)>0) then
            call gradient_sphere(log(exner(:,:)),deriv,elem(ie)%Dinv,grad_logexner)
            grad_exner_term(:,:,1)=grad_exner_term(:,:,1) + &
@@ -1275,6 +1275,8 @@ contains
            grad_exner_term(:,:,2)=grad_exner_term(:,:,2) + &
                 cpair*T0*(grad_logexner(:,:,2)-grad_exner(:,:,2)/exner(:,:))
          end if
+
+
          
          do j=1,np
            do i=1,np
