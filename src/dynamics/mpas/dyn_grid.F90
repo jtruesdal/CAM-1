@@ -107,10 +107,6 @@ integer, allocatable :: num_col_per_block(:)       ! number of columns in each b
 integer, allocatable :: global_blockid(:)          ! block id for each global column
 integer, allocatable :: local_col_index(:)         ! local column index (in block) for each global column
 
-real(r8), dimension(:), pointer :: lonCell_g       ! global cell longitudes
-real(r8), dimension(:), pointer :: latCell_g       ! global cell latitudes
-real(r8), dimension(:), pointer :: areaCell_g      ! global cell areas
-
 !=========================================================================================
 contains
 !=========================================================================================
@@ -508,35 +504,7 @@ subroutine get_horiz_grid_d(nxy, clat_d_out, clon_d_out, area_d_out, &
    character(len=*), parameter :: subname = 'dyn_grid::get_horiz_grid_d'
    !----------------------------------------------------------------------------
 
-   if ( nxy /= nCells_g ) then
-      write(iulog,*) subname//': incorrect number of cells: nxy, nCells_g= ', &
-         nxy, nCells_g
-      call endrun(subname//': incorrect number of cells')
-   end if
-
-   if ( present( clat_d_out ) ) then
-      clat_d_out(:) = latCell_g(:)
-   end if
-
-   if ( present( clon_d_out ) ) then
-      clon_d_out(:) = lonCell_g(:)
-   end if
-
-   if ( present( area_d_out ) ) then
-      area_d_out(:) = areaCell_g(:) / (sphere_radius**2)
-   end if
-
-   if ( present( wght_d_out ) ) then
-      wght_d_out(:) = areaCell_g(:) / (sphere_radius**2)
-   end if
-
-   if ( present( lat_d_out ) ) then
-      lat_d_out(:) = latCell_g(:) * rad2deg
-   end if
-
-   if ( present( lon_d_out ) ) then
-      lon_d_out(:) = lonCell_g(:) * rad2deg
-   end if
+   call endrun(subname//': NOT SUPPORTED WITH WEAK SCALING FIX')
 
 end subroutine get_horiz_grid_d
 
