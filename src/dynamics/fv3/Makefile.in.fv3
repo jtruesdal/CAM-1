@@ -46,7 +46,9 @@ F90FLAGS := $(FREEFLAGS) $(FFLAGS)
 # Additional GNU flags needed for FV3
 ifeq ($(strip $(COMPILER)),gnu)
   F90FLAGS += -fcray-pointer
-  # also, below we inhibit all GNU compiler warnings for FMS because (1) we have no control
+#  F90FLAGS += -fdec
+#  F90FLAGS += -fno-range-check
+# also, below we inhibit all GNU compiler warnings for FMS because (1) we have no control
   # over FMS, and (2) some GNU warning msgs contain characters that require encoding/decoding.
   #  F90FLAGS += -w
   #  CFLAGS += -w
@@ -101,6 +103,23 @@ db_flags:
 	@echo "* .F.o    := $(FC) $(F90FLAGS) $(INCLDIR) $(INCS)"
 
 #-------------------------------------------------------------------------------
+# build rules:
+#-------------------------------------------------------------------------------
+.SUFFIXES:
+.SUFFIXES: .F90 .F .f90 .f .c .cpp .o .in
+
+ifdef INCLUDE_DIR
+  $(COMPLIB): $(OBJS)
+	@echo "* OBJS   := $(OBJS)"
+	$(AR) -r $(COMPLIB) $(OBJS)
+	$(CP) *.$(MOD_SUFFIX) *.h $(INCLUDE_DIR)
+else
+  $(COMPLIB): $(OBJS)
+	@echo "* OBJS   := $(OBJS)"
+	$(AR) -r $(COMPLIB) $(OBJS)
+endif
+
+#-------------------------------------------------------------------------------
 # Rules for gnu specific compiler directives for FV3 library code
 #-------------------------------------------------------------------------------
 
@@ -117,31 +136,17 @@ gfdl_cloud_microphys.o: gfdl_cloud_microphys.F90
 module_mp_radar.o: module_mp_radar.F90
 	$(F90) -c $(INCLDIR) $(INCS) $(F90FLAGS) -fdec $<
 endif
-#-------------------------------------------------------------------------------
-# build rules:
-#-------------------------------------------------------------------------------
-.SUFFIXES:
-.SUFFIXES: .F90 .F .f90 .f .c .cpp .o .in
-
-ifdef INCLUDE_DIR
-  $(COMPLIB): $(OBJS)
-	$(AR) -r $(COMPLIB) $(OBJS)
-	$(CP) *.$(MOD_SUFFIX) *.h $(INCLUDE_DIR)
-else
-  $(COMPLIB): $(OBJS)
-	$(AR) -r $(COMPLIB) $(OBJS)
-endif
 
 .c.o:
 	$(CC) -c $(INCLDIR) $(INCS) $(CFLAGS) $(CPPDEFS) $<
 .F.o:
-	$(FC) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FIXEDFLAGS) $<
+	$(F90) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FIXEDFLAGS) $<
 .f.o:
-	$(FC) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FIXEDFLAGS) $<
+	$(F90) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FIXEDFLAGS) $<
 .f90.o:
-	$(FC) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FREEFLAGS)  $<
+	$(F90) -c $(INCLDIR) $(INCS) $(F90FLAGS) $<
 .F90.o:
-	$(FC) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FREEFLAGS) $(CONTIGUOUS_FLAG) $<
+	$(F90) -c $(INCLDIR) $(INCS) $(F90FLAGS) $(CONTIGUOUS_FLAG) $<
 .cpp.o:
 	$(CXX) -c $(INCLDIR) $(INCS) $(CXXFLAGS)  $<
 
