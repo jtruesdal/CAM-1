@@ -532,7 +532,7 @@ function test_func(name, lat, lon, k, z) result(fout)
      fout = 2.0_r8 + cos(lon)
    case('TT_COSB')
      !
-     ! Cosine bell (Kent et al., 2012, MWR)
+     ! Cosine bell inspired by Kent et al., 2012, MWR; only one bell and location changed
      ! https://journals.ametsoc.org/doi/pdf/10.1175/MWR-D-11-00150.1
      !
      R0    = 0.5_r8           ! radius of the perturbation
