@@ -440,7 +440,7 @@ subroutine tphysbc_spcam (ztodt, state,   &
     !===================================================
     call t_startf('energy_fixer')
 
-    if (dycore_is('LR') .or. dycore_is('SE'))  then
+    if (.not.dycore_is('EUL')) then
        call check_energy_fix(state, ptend, nstep, flx_heat)
        call physics_update(state, ptend, ztodt, tend)
        call check_energy_chng(state, tend, "chkengyfix", nstep, ztodt, zero, zero, zero, flx_heat)
