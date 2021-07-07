@@ -256,6 +256,9 @@ contains
 
     call addfld ('PSL',        horiz_only,  'A', 'Pa','Sea level pressure')
     call addfld ('PMID',       (/ 'lev' /), 'A', 'Pa', 'Pressure at layer midpoints')
+    if (dycore_is('MPAS')) then
+       call addfld ('PINT',       (/ 'ilev' /), 'A', 'Pa', 'Pressure at interface points')
+    end if
 
     call addfld ('T1000',      horiz_only,  'A', 'K','Temperature at 1000 mbar pressure surface')
     call addfld ('T925',       horiz_only,  'A', 'K','Temperature at 925 mbar pressure surface')
@@ -483,6 +486,10 @@ contains
     call addfld ('PSDRY',      horiz_only,  'A', 'Pa', 'Dry surface pressure')
     call addfld ('PDELDRY',    (/ 'lev' /), 'A', 'Pa', 'Dry pressure difference between levels')
     call addfld ('PDEL',       (/ 'lev' /), 'A', 'Pa', 'Pressure difference between levels')
+    if (dycore_is('MPAS')) then
+       call addfld ('PMID',       (/ 'lev' /), 'A', 'Pa', 'Pressure at layer midpoints')
+       call addfld ('PINT',       (/ 'ilev' /), 'A', 'Pa', 'Pressure at interface points')
+    end if
 
     ! outfld calls in diag_conv
 
@@ -634,7 +641,6 @@ contains
     if (dycore_is('MPAS')) then
       call add_default ('PINT', 1, ' ')
       call add_default ('PMID',  1, ' ')
-      call add_default ('PDEL',  1, ' ')
    end if
 
     if (history_eddy) then
@@ -989,6 +995,11 @@ contains
 
     call outfld('PHIS    ',state%phis,    pcols,   lchnk     )
 
+    if (dycore_is('MPAS')) then
+      call outfld('PMID',    state%pmid,    pcols, lchnk)
+      call outfld('PINT',    state%pint,    pcols, lchnk)
+    end if    
+
 #if (defined BFB_CAM_SCAM_IOP )
     call outfld('phis    ',state%phis,    pcols,   lchnk     )
 #endif
@@ -1325,11 +1336,11 @@ contains
     call constituent_burden_comp(state)
 
     call outfld('PSDRY',   state%psdry,   pcols, lchnk)
-    call outfld('PMID',    state%pmid,    pcols, lchnk)
-    call outfld('PINT',    state%pint,    pcols, lchnk)
     call outfld('PDELDRY', state%pdeldry, pcols, lchnk)
-    call outfld('PDEL',    state%pdel,    pcols, lchnk)
-
+    call outfld('PMID',    state%pmid,    pcols, lchnk)
+    if (dycore_is('MPAS')) then
+      call outfld('PINT',    state%pint,    pcols, lchnk)
+    end if    
     !
     ! Meridional advection fields
     !
