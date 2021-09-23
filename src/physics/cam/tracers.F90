@@ -532,10 +532,10 @@ function test_func(name, lat, lon, k, z) result(fout)
      fout = 2.0_r8 + cos(lon)
    case('TT_COSB')
      !
-     ! Cosine bell (Kent et al., 2012, MWR)
+     ! Cosine bell inspired by Kent et al., 2012, MWR; only one bell and location changed
      ! https://journals.ametsoc.org/doi/pdf/10.1175/MWR-D-11-00150.1
      !
-     R0    = 0.9_r8*1.0_r8/2.0_r8           ! radius of the perturbation
+     R0    = 0.5_r8           ! radius of the perturbation
      lon1  = pi/9.0_r8
      lat1  = 2.0_r8*pi/9.0_r8
 
@@ -550,18 +550,15 @@ function test_func(name, lat, lon, k, z) result(fout)
      end if
 
      if (Rg1 < R0) then
-       fout = 0.1_r8+0.5_r8*(1.0_r8+COS(pi*d1))
+       fout = 0.1_r8+0.9_r8*0.5_r8*(1.0_r8+COS(pi*d1))
      else
        fout = 0.1_r8
      end if
-     !      IF (ABS(fout) < 1.0E-8_r8) fout = 0.0_r8
-     !      eta_c = 0.6_r8
-     !      eta =  (hyam(k)*ps0 + hybm(k)*psurf_moist)/psurf_moist
    case('TT_CCOSB')
      !
      ! Correlated cosine bell
      !
-     R0    = 0.9_r8*1.0_r8/2.0_r8           ! radius of the perturbation
+     R0    = 0.5_r8           ! radius of the perturbation
      lon1  = pi/9.0_r8
      lat1  = 2.0_r8*pi/9.0_r8
 
@@ -576,7 +573,7 @@ function test_func(name, lat, lon, k, z) result(fout)
      end if
 
      if (Rg1 < R0) then
-       f1 = 0.1_r8+0.5_r8*(1.0_r8+COS(pi*d1))
+       f1 = 0.1_r8+0.9_r8*0.5_r8*(1.0_r8+COS(pi*d1))
      else
        f1 = 0.1_r8
      end if
@@ -586,7 +583,7 @@ function test_func(name, lat, lon, k, z) result(fout)
      !
      ! Correlated cosine bell
      !
-     R0    = 0.9_r8*1.0_r8/2.0_r8           ! radius of the perturbation
+     R0    = 0.5_r8           ! radius of the perturbation
      lon1  = pi/9.0_r8
      lat1  = 2.0_r8*pi/9.0_r8
 
@@ -601,7 +598,7 @@ function test_func(name, lat, lon, k, z) result(fout)
      end if
 
      if (Rg1 < R0) then
-       f1 = 0.1_r8+0.5_r8*(1.0_r8+COS(pi*d1))
+       f1 = 0.1_r8+0.9_r8*0.5_r8*(1.0_r8+COS(pi*d1))
      else
        f1 = 0.1_r8
      end if

@@ -121,7 +121,20 @@ logical :: micro_do_massless_droplet_destroyer ! turn on/off destruction of mass
 
 character(len=16) :: micro_mg_precip_frac_method = 'max_overlap' ! type of precipitation fraction method
 
-real(r8)          :: micro_mg_berg_eff_factor    = 1.0_r8        ! berg efficiency factor
+real(r8), parameter :: unset_r8 = huge(1.0_r8)
+
+! Tunable namelist parameters (set in atm_in)
+real(r8) :: micro_mg_berg_eff_factor   = unset_r8        ! berg efficiency factor
+real(r8) :: micro_mg_accre_enhan_fact  = unset_r8        ! accretion enhancment factor
+real(r8) :: micro_mg_autocon_fact      = unset_r8       ! autoconversion prefactor
+real(r8) :: micro_mg_autocon_nd_exp    = unset_r8       ! autoconversion nd exponent
+real(r8) :: micro_mg_autocon_lwp_exp   = unset_r8       ! autoconversion lwp exponent      
+real(r8) :: micro_mg_homog_size        = unset_r8     ! size of freezing homogeneous ice
+real(r8) :: micro_mg_vtrmi_factor      = unset_r8        ! ice fall speed factor
+real(r8) :: micro_mg_effi_factor       = unset_r8        ! ice effective radius factor
+real(r8) :: micro_mg_iaccr_factor      = unset_r8        ! ice accretion of cloud droplet
+real(r8) :: micro_mg_max_nicons        = unset_r8  ! max allowed ice number concentration
+
 
 logical, public :: do_cldliq ! Prognose cldliq flag
 logical, public :: do_cldice ! Prognose cldice flag
@@ -134,15 +147,29 @@ integer :: ncnst = 4       ! Number of constituents
 logical :: micro_mg_nccons = .false. ! set .true. to specify constant cloud droplet number
 logical :: micro_mg_nicons = .false. ! set .true. to specify constant cloud ice number
 logical :: micro_mg_ngcons = .false. ! set .true. to specify constant graupel/hail number
-
+logical :: micro_mg_nrcons = .false. ! set .true. to specify constant rain number
+logical :: micro_mg_nscons = .false. ! set .true. to specify constant snow number
+      
 ! parameters for specified ice and droplet number concentration
 ! note: these are local in-cloud values, not grid-mean
-real(r8) :: micro_mg_ncnst = 100.e6_r8 ! constant droplet num concentration (m-3)
-real(r8) :: micro_mg_ninst = 0.1e6_r8  ! constant ice num concentration (m-3)
-real(r8) :: micro_mg_ngnst = 0.1e6_r8  ! constant graupel/hail num concentration (m-3)
+real(r8) :: micro_mg_ncnst = 50.e6_r8 ! constant liquid droplet num concentration (m-3)
+real(r8) :: micro_mg_ninst = 0.05e6_r8  ! ice num concentration when nicons=.true. (m-3)
+real(r8) :: micro_mg_nrnst = 0.2e6_r8     ! rain  num concentration when nrcons=.true. (m-3)
+real(r8) :: micro_mg_nsnst = 0.005e6_r8 ! snow num concentration when nscons=.true. (m-3)
+real(r8) :: micro_mg_ngnst = 0.0005e6_r8 ! graupel/hail num concentration when ngcons=.true. (m-3)
 
 logical, public ::   micro_mg_do_graupel
 logical, public ::   micro_mg_do_hail
+
+! switches for IFS like behavior
+logical  ::  micro_mg_evap_sed_off = .false.      ! Turn off evaporation/sublimation based on cloud fraction for sedimenting condensate
+logical  ::  micro_mg_icenuc_rh_off  = .false.    ! Remove RH conditional from ice nucleation
+logical  ::  micro_mg_icenuc_use_meyers = .false. ! Meyers Ice Nucleation
+logical  ::  micro_mg_evap_scl_ifs = .false.      ! Scale evaporation as IFS does
+logical  ::  micro_mg_evap_rhthrsh_ifs = .false.  ! Evap RH threhold following IFS
+logical  ::  micro_mg_rainfreeze_ifs = .false.    ! Rain freezing at 0C following IFS
+logical  ::  micro_mg_ifs_sed = .false.           ! Snow sedimentation = 1 m/s following IFS
+logical  ::  micro_mg_precip_fall_corr = .false.    ! Precip fall speed following IFS 
 
 character(len=10), parameter :: &      ! Constituent names
    cnst_names(10) = (/'CLDLIQ', 'CLDICE','NUMLIQ','NUMICE', &
@@ -294,11 +321,19 @@ subroutine micro_mg_cam_readnl(nlfile)
 
   namelist /micro_mg_nl/ micro_mg_version, micro_mg_sub_version, &
        micro_mg_do_cldice, micro_mg_do_cldliq, micro_mg_num_steps, &
-       microp_uniform, micro_mg_dcs, micro_mg_precip_frac_method,  &
+       microp_uniform, micro_mg_dcs, micro_mg_precip_frac_method, &
        micro_mg_berg_eff_factor, micro_do_sb_physics, micro_mg_adjust_cpt, &
-       micro_mg_do_hail, micro_mg_do_graupel,micro_mg_ngcons, micro_mg_ngnst,&
-       micro_mg_nccons, micro_mg_nicons, micro_mg_ncnst, micro_mg_ninst,&
-       micro_do_massless_droplet_destroyer
+       micro_mg_do_hail, micro_mg_do_graupel, micro_mg_ngcons, micro_mg_ngnst, &
+       micro_mg_vtrmi_factor, micro_mg_effi_factor, micro_mg_iaccr_factor, &
+       micro_mg_max_nicons, micro_mg_accre_enhan_fact, &
+       micro_mg_autocon_fact, micro_mg_autocon_nd_exp, micro_mg_autocon_lwp_exp, micro_mg_homog_size, &
+       micro_mg_nccons, micro_mg_nicons, micro_mg_ncnst, micro_mg_ninst, &
+       micro_mg_nrcons, micro_mg_nscons, micro_mg_nrnst, micro_mg_nsnst, &
+       micro_do_massless_droplet_destroyer, &
+       micro_mg_evap_sed_off, micro_mg_icenuc_rh_off, micro_mg_icenuc_use_meyers, &
+       micro_mg_evap_scl_ifs, micro_mg_evap_rhthrsh_ifs, &
+       micro_mg_rainfreeze_ifs, micro_mg_ifs_sed, micro_mg_precip_fall_corr
+
 
   !-----------------------------------------------------------------------------
 
@@ -393,6 +428,33 @@ subroutine micro_mg_cam_readnl(nlfile)
   call mpi_bcast(micro_mg_berg_eff_factor, 1, mpi_real8, mstrid, mpicom, ierr)
   if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_berg_eff_factor")
 
+  call mpi_bcast(micro_mg_accre_enhan_fact, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_accre_enhan_fact")
+
+  call mpi_bcast(micro_mg_autocon_fact, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_autocon_fact")
+
+  call mpi_bcast(micro_mg_autocon_nd_exp, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_autocon_nd_exp")
+
+  call mpi_bcast(micro_mg_autocon_lwp_exp, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_autocon_lwp_exp")
+
+  call mpi_bcast(micro_mg_homog_size, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_homog_size")
+
+  call mpi_bcast(micro_mg_vtrmi_factor, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_vtrmi_factor")
+
+  call mpi_bcast(micro_mg_effi_factor, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_effi_factor")
+
+  call mpi_bcast(micro_mg_iaccr_factor, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_iaccr_factor")
+
+  call mpi_bcast(micro_mg_max_nicons, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_max_nicons")
+
   call mpi_bcast(micro_mg_precip_frac_method, 16, mpi_character, mstrid, mpicom, ierr)
   if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_precip_frac_method")
 
@@ -408,11 +470,23 @@ subroutine micro_mg_cam_readnl(nlfile)
   call mpi_bcast(micro_mg_nicons, 1, mpi_logical, mstrid, mpicom, ierr)
   if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_nicons")
 
+  call mpi_bcast(micro_mg_nrcons, 1, mpi_logical, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_nrcons")
+
+  call mpi_bcast(micro_mg_nscons, 1, mpi_logical, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_nscons")
+
   call mpi_bcast(micro_mg_ncnst, 1, mpi_real8, mstrid, mpicom, ierr)
   if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_ncnst")
 
   call mpi_bcast(micro_mg_ninst, 1, mpi_real8, mstrid, mpicom, ierr)
   if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_ninst")
+
+  call mpi_bcast(micro_mg_nrnst, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_nrnst")
+
+  call mpi_bcast(micro_mg_nsnst, 1, mpi_real8, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_nsnst")
 
   call mpi_bcast(micro_mg_do_hail, 1, mpi_logical, mstrid, mpicom, ierr)
   if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_do_hail")
@@ -429,6 +503,41 @@ subroutine micro_mg_cam_readnl(nlfile)
   call mpi_bcast(micro_do_massless_droplet_destroyer, 1, mpi_logical, mstrid, mpicom, ierr)
   if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_do_massless_droplet_destroyer")
 
+  call mpi_bcast(micro_mg_evap_sed_off, 1, mpi_logical, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_evap_sed_off")
+
+  call mpi_bcast(micro_mg_icenuc_rh_off, 1, mpi_logical, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_icenuc_rh_off")
+
+  call mpi_bcast(micro_mg_icenuc_use_meyers, 1, mpi_logical, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_icenuc_use_meyers")
+
+  call mpi_bcast(micro_mg_evap_scl_ifs, 1, mpi_logical, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_evap_scl_ifs")
+
+  call mpi_bcast(micro_mg_evap_rhthrsh_ifs, 1, mpi_logical, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_evap_rhthrsh_ifs")
+
+  call mpi_bcast(micro_mg_rainfreeze_ifs, 1, mpi_logical, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_rainfreeze_ifs")
+  
+  call mpi_bcast(micro_mg_ifs_sed, 1, mpi_logical, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_ifs_sed")
+  
+  call mpi_bcast(micro_mg_precip_fall_corr, 1, mpi_logical, mstrid, mpicom, ierr)
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: micro_mg_precip_fall_corr")
+  
+  if(micro_mg_berg_eff_factor == unset_r8) call endrun(sub//": FATAL: micro_mg_berg_eff_factor is not set")
+  if(micro_mg_accre_enhan_fact == unset_r8) call endrun(sub//": FATAL: micro_mg_accre_enhan_fact is not set")
+  if(micro_mg_autocon_fact == unset_r8) call endrun(sub//": FATAL: micro_mg_autocon_fact is not set")
+  if(micro_mg_autocon_nd_exp == unset_r8) call endrun(sub//": FATAL: micro_mg_autocon_nd_exp is not set")
+  if(micro_mg_autocon_lwp_exp == unset_r8) call endrun(sub//": FATAL: micro_mg_autocon_lwp_exp is not set")
+  if(micro_mg_homog_size == unset_r8) call endrun(sub//": FATAL: micro_mg_homog_size is not set")
+  if(micro_mg_vtrmi_factor == unset_r8) call endrun(sub//": FATAL: micro_mg_vtrmi_factor is not set")
+  if(micro_mg_effi_factor == unset_r8) call endrun(sub//": FATAL: micro_mg_effi_factor is not set")
+  if(micro_mg_iaccr_factor == unset_r8) call endrun(sub//": FATAL: micro_mg_iaccr_factor is not set")  
+  if(micro_mg_max_nicons == unset_r8) call endrun(sub//": FATAL: micro_mg_max_nicons is not set")
+
   if (masterproc) then
 
      write(iulog,*) 'MG microphysics namelist:'
@@ -440,6 +549,15 @@ subroutine micro_mg_cam_readnl(nlfile)
      write(iulog,*) '  microp_uniform              = ', microp_uniform
      write(iulog,*) '  micro_mg_dcs                = ', micro_mg_dcs
      write(iulog,*) '  micro_mg_berg_eff_factor    = ', micro_mg_berg_eff_factor
+     write(iulog,*) '  micro_mg_accre_enhan_fact   = ', micro_mg_accre_enhan_fact 
+     write(iulog,*) '  micro_mg_autocon_fact       = ' , micro_mg_autocon_fact
+     write(iulog,*) '  micro_mg_autocon_nd_exp     = ' , micro_mg_autocon_nd_exp
+     write(iulog,*) '  micro_mg_autocon_lwp_exp    = ' , micro_mg_autocon_lwp_exp
+     write(iulog,*) '  micro_mg_homog_size         = ', micro_mg_homog_size
+     write(iulog,*) '  micro_mg_vtrmi_factor       = ', micro_mg_vtrmi_factor
+     write(iulog,*) '  micro_mg_effi_factor        = ', micro_mg_effi_factor
+     write(iulog,*) '  micro_mg_iaccr_factor       = ', micro_mg_iaccr_factor
+     write(iulog,*) '  micro_mg_max_nicons         = ', micro_mg_max_nicons
      write(iulog,*) '  micro_mg_precip_frac_method = ', micro_mg_precip_frac_method
      write(iulog,*) '  micro_do_sb_physics         = ', micro_do_sb_physics
      write(iulog,*) '  micro_mg_adjust_cpt         = ', micro_mg_adjust_cpt
@@ -452,6 +570,18 @@ subroutine micro_mg_cam_readnl(nlfile)
      write(iulog,*) '  micro_mg_do_hail            = ', micro_mg_do_hail
      write(iulog,*) '  micro_mg_do_graupel         = ', micro_mg_do_graupel
      write(iulog,*) '  micro_do_massless_droplet_destroyer = ', micro_do_massless_droplet_destroyer
+     write(iulog,*) '  micro_mg_nrcons             = ', micro_mg_nrcons
+     write(iulog,*) '  micro_mg_nscons             = ', micro_mg_nscons
+     write(iulog,*) '  micro_mg_nrnst              = ', micro_mg_nrnst
+     write(iulog,*) '  micro_mg_nsnst              = ', micro_mg_nsnst
+     write(iulog,*) '  micro_mg_evap_sed_off       = ', micro_mg_evap_sed_off
+     write(iulog,*) '  micro_mg_icenuc_rh_off      = ', micro_mg_icenuc_rh_off
+     write(iulog,*) '  micro_mg_icenuc_use_meyers  = ', micro_mg_icenuc_use_meyers
+     write(iulog,*) '  micro_mg_evap_scl_ifs       = ', micro_mg_evap_scl_ifs
+     write(iulog,*) '  micro_mg_evap_rhthrsh_ifs   = ', micro_mg_evap_rhthrsh_ifs
+     write(iulog,*) '  micro_mg_rainfreeze_ifs     = ', micro_mg_rainfreeze_ifs
+     write(iulog,*) '  micro_mg_ifs_sed            = ', micro_mg_ifs_sed
+     write(iulog,*) '  micro_mg_precip_fall_corr     = ', micro_mg_precip_fall_corr
   end if
 
 contains
@@ -830,10 +960,17 @@ subroutine micro_mg_cam_init(pbuf2d)
            micro_mg_do_hail,micro_mg_do_graupel, &
            microp_uniform, do_cldice, use_hetfrz_classnuc, &
            micro_mg_precip_frac_method, micro_mg_berg_eff_factor, &
+           micro_mg_accre_enhan_fact , &
+           micro_mg_autocon_fact , micro_mg_autocon_nd_exp, micro_mg_autocon_lwp_exp, micro_mg_homog_size, &
+           micro_mg_vtrmi_factor, micro_mg_effi_factor, micro_mg_iaccr_factor, &
+           micro_mg_max_nicons, &
            allow_sed_supersat, micro_do_sb_physics, &
+           micro_mg_evap_sed_off, micro_mg_icenuc_rh_off, micro_mg_icenuc_use_meyers, &
+           micro_mg_evap_scl_ifs, micro_mg_evap_rhthrsh_ifs, &
+           micro_mg_rainfreeze_ifs,  micro_mg_ifs_sed, micro_mg_precip_fall_corr,&
            micro_mg_nccons, micro_mg_nicons, micro_mg_ncnst, &
-           micro_mg_ninst, micro_mg_ngcons, micro_mg_ngnst, errstring)
-
+           micro_mg_ninst, micro_mg_ngcons, micro_mg_ngnst, &
+           micro_mg_nrcons,  micro_mg_nrnst, micro_mg_nscons, micro_mg_nsnst, errstring)
    end select
 
    call handle_errmsg(errstring, subname="micro_mg_init")
@@ -902,6 +1039,8 @@ subroutine micro_mg_cam_init(pbuf2d)
    call addfld ('BERGSO',     (/ 'lev' /), 'A', 'kg/kg/s',  'Conversion of cloud water to snow from bergeron'         )
    call addfld ('BERGO',      (/ 'lev' /), 'A', 'kg/kg/s',  'Conversion of cloud water to cloud ice from bergeron'    )
    call addfld ('MELTO',      (/ 'lev' /), 'A', 'kg/kg/s',  'Melting of cloud ice'                                    )
+   call addfld ('MELTSTOT',   (/ 'lev' /), 'A', 'kg/kg/s',  'Melting of snow'                                    )
+   call addfld ('MNUDEPO',   (/ 'lev' /), 'A', 'kg/kg/s',  'Deposition Nucleation'                                    )
    call addfld ('HOMOO',      (/ 'lev' /), 'A', 'kg/kg/s',  'Homogeneous freezing of cloud water'                     )
    call addfld ('QCRESO',     (/ 'lev' /), 'A', 'kg/kg/s',  'Residual condensation term for cloud water'              )
    call addfld ('PRCIO',      (/ 'lev' /), 'A', 'kg/kg/s',  'Autoconversion of cloud ice to snow'                     )
@@ -936,6 +1075,7 @@ subroutine micro_mg_cam_init(pbuf2d)
          call addfld ('NMULTRGO',     (/ 'lev' /), 'A', 'kg/kg/s',  'Ice mult due to acc rain by graupel')
          call addfld ('NPSACWGO',     (/ 'lev' /), 'A', 'kg/kg/s',  'Change N collection droplets by graupel')
          call addfld ('CLDFGRAU',   (/ 'lev' /), 'A', '1',        'Cloud fraction adjusted for graupel'                        )
+         call addfld ('MELTGTOT',   (/ 'lev' /), 'A', 'kg/kg/s',  'Melting of graupel'                                    )
 
    end if
 
@@ -1153,6 +1293,8 @@ subroutine micro_mg_cam_init(pbuf2d)
       call add_default ('CMEIOUT  ', budget_histfile, ' ')
       call add_default ('BERGSO   ', budget_histfile, ' ')
       call add_default ('BERGO    ', budget_histfile, ' ')
+      call add_default ('MELTSTOT ', budget_histfile, ' ')
+      call add_default ('MNUDEPO  ', budget_histfile, ' ')
       if (micro_mg_version > 2) then
          call add_default ('QGSEDTEN ', budget_histfile, ' ')
          call add_default ('PSACRO    ', budget_histfile, ' ')
@@ -1163,6 +1305,7 @@ subroutine micro_mg_cam_init(pbuf2d)
          call add_default ('PRDGO     ', budget_histfile, ' ')
          call add_default ('QMULTGO   ', budget_histfile, ' ')
          call add_default ('QMULTRGO  ', budget_histfile, ' ')
+         call add_default ('MELTGTOT  ', budget_histfile, ' ')
       end if
       call add_default(cnst_name(ixcldliq), budget_histfile, ' ')
       call add_default(cnst_name(ixcldice), budget_histfile, ' ')
@@ -1437,6 +1580,9 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
    real(r8), target :: qireso(state%psetcols,pver)
    real(r8), target :: mnuccro(state%psetcols,pver)
    real(r8), target :: mnuccrio(state%psetcols,pver)
+   real(r8), target :: mnudepo(state%psetcols,pver)
+   real(r8), target :: meltstot(state%psetcols,pver)
+   real(r8), target :: meltgtot(state%psetcols,pver)
    real(r8), target :: pracso (state%psetcols,pver)
    real(r8), target :: meltsdt(state%psetcols,pver)
    real(r8), target :: frzrdt (state%psetcols,pver)
@@ -1592,6 +1738,9 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
    real(r8), target :: packed_qires(mgncol,nlev)
    real(r8), target :: packed_mnuccr(mgncol,nlev)
    real(r8), target :: packed_mnuccri(mgncol,nlev)
+   real(r8), target :: packed_mnudeptot(mgncol,nlev)
+   real(r8), target :: packed_meltgtot(mgncol,nlev)
+   real(r8), target :: packed_meltstot(mgncol,nlev)
    real(r8), target :: packed_pracs(mgncol,nlev)
    real(r8), target :: packed_meltsdt(mgncol,nlev)
    real(r8), target :: packed_frzrdt(mgncol,nlev)
@@ -1952,7 +2101,6 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
    ncol  = state%ncol
    psetcols = state%psetcols
    ngrdcol  = state%ngrdcol
-
    itim_old = pbuf_old_tim_idx()
 
    call phys_getopts(use_subcol_microp_out=use_subcol_microp)
@@ -2291,6 +2439,8 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
    call post_proc%add_field(p(mnuccdo), p(packed_mnuccd))
    call post_proc%add_field(p(nrout), p(packed_nrout))
    call post_proc%add_field(p(nsout), p(packed_nsout))
+   call post_proc%add_field(p(mnudepo), p(packed_mnudeptot))
+   call post_proc%add_field(p(meltstot), p(packed_meltstot))
 
    call post_proc%add_field(p(refl), p(packed_refl), fillvalue=-9999._r8)
    call post_proc%add_field(p(arefl), p(packed_arefl))
@@ -2330,6 +2480,7 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
       call post_proc%add_field(p(prdgo), p(packed_prdg))
       call post_proc%add_field(p(qmultgo), p(packed_qmultg))
       call post_proc%add_field(p(qmultrgo), p(packed_qmultrg))
+      call post_proc%add_field(p(meltgtot), p(packed_meltgtot))
    end if
 
    ! The following are all variables related to sizes, where it does not
@@ -2491,9 +2642,9 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
               packed_pra,             packed_prc,             &
               packed_mnuccc,  packed_mnucct,  packed_msacwi,  &
               packed_psacws,  packed_bergs,   packed_berg,    &
-              packed_melt,            packed_homo,            &
+              packed_melt,    packed_meltstot,packed_meltgtot,  packed_homo, &
               packed_qcres,   packed_prci,    packed_prai,    &
-              packed_qires,   packed_mnuccr,  packed_mnuccri, packed_pracs,   &
+              packed_qires,   packed_mnuccr,  packed_mnudeptot, packed_mnuccri, packed_pracs, &
               packed_meltsdt, packed_frzrdt,  packed_mnuccd,  &
               packed_pracg,   packed_psacwg,  packed_pgsacw,  &
               packed_pgracs,  packed_prdg,   &
@@ -3002,9 +3153,15 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
 
    ncic_grid = 1.e8_r8
 
-   call size_dist_param_liq(mg_liq_props, icwmrst_grid(:ngrdcol,top_lev:), &
-        ncic_grid(:ngrdcol,top_lev:), rho_grid(:ngrdcol,top_lev:), &
-        mu_grid(:ngrdcol,top_lev:), lambdac_grid(:ngrdcol,top_lev:))
+   do k = top_lev, pver  
+      !$acc data copyin  (mg_liq_props,icwmrst_grid(:ngrdcol,k),rho_grid(:ngrdcol,k)) &
+      !$acc      copy    (ncic_grid(:ngrdcol,k)) &
+      !$acc      copyout (mu_grid(:ngrdcol,k),lambdac_grid(:ngrdcol,k))
+      call size_dist_param_liq(mg_liq_props, icwmrst_grid(:ngrdcol,k), &
+                               ncic_grid(:ngrdcol,k), rho_grid(:ngrdcol,k), &
+                               mu_grid(:ngrdcol,k), lambdac_grid(:ngrdcol,k), ngrdcol)
+      !$acc end data
+   end do
 
    where (icwmrst_grid(:ngrdcol,top_lev:) > qsmall)
       rel_fn_grid(:ngrdcol,top_lev:) = &
@@ -3022,9 +3179,15 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
    ncic_grid(:ngrdcol,top_lev:) = nc_grid(:ngrdcol,top_lev:) / &
         max(mincld,liqcldf_grid(:ngrdcol,top_lev:))
 
-   call size_dist_param_liq(mg_liq_props, icwmrst_grid(:ngrdcol,top_lev:), &
-        ncic_grid(:ngrdcol,top_lev:), rho_grid(:ngrdcol,top_lev:), &
-        mu_grid(:ngrdcol,top_lev:), lambdac_grid(:ngrdcol,top_lev:))
+   do k = top_lev, pver
+      !$acc data copyin  (mg_liq_props,icwmrst_grid(:ngrdcol,k), rho_grid(:ngrdcol,k)) &
+      !$acc      copy    (ncic_grid(:ngrdcol,k)) &
+      !$acc      copyout (mu_grid(:ngrdcol,k),lambdac_grid(:ngrdcol,k))
+      call size_dist_param_liq(mg_liq_props, icwmrst_grid(:ngrdcol,k), &
+           ncic_grid(:ngrdcol,k), rho_grid(:ngrdcol,k), &
+           mu_grid(:ngrdcol,k), lambdac_grid(:ngrdcol,k), ngrdcol)
+      !$acc end data
+   end do
 
    where (icwmrst_grid(:ngrdcol,top_lev:) >= qsmall)
       rel_grid(:ngrdcol,top_lev:) = &
@@ -3120,8 +3283,14 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
    niic_grid(:ngrdcol,top_lev:) = ni_grid(:ngrdcol,top_lev:) / &
         max(mincld,icecldf_grid(:ngrdcol,top_lev:))
 
-   call size_dist_param_basic(mg_ice_props, icimrst_grid(:ngrdcol,top_lev:), &
-        niic_grid(:ngrdcol,top_lev:), rei_grid(:ngrdcol,top_lev:))
+   do k = top_lev, pver
+      !$acc data copyin  (mg_ice_props, icimrst_grid(:ngrdcol,k)) &
+      !$acc      copy    (niic_grid(:ngrdcol,k)) &
+      !$acc      copyout (rei_grid(:ngrdcol,k))
+      call size_dist_param_basic(mg_ice_props,icimrst_grid(:ngrdcol,k), &
+                                 niic_grid(:ngrdcol,k),rei_grid(:ngrdcol,k),ngrdcol)
+      !$acc end data
+   end do
 
    where (icimrst_grid(:ngrdcol,top_lev:) >= qsmall)
       rei_grid(:ngrdcol,top_lev:) = 1.5_r8/rei_grid(:ngrdcol,top_lev:) &
@@ -3449,6 +3618,8 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
       call outfld('QRSEDTEN',    qrsedten,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
       call outfld('QSSEDTEN',    qssedten,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
       call outfld('MNUCCRIO',    mnuccrio,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+      call outfld('MNUDEPO',    mnudepo,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+      call outfld('MELTSTOT',    meltstot,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
    end if
    call outfld('MNUCCDO',     mnuccdo,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
    call outfld('MNUCCDOhet',  mnuccdohet,  psetcols, lchnk, avg_subcol_field=use_subcol_microp)
@@ -3475,6 +3646,8 @@ subroutine micro_mg_cam_tend_pack(state, ptend, dtime, pbuf, mgncol, mgcols, nle
       call outfld('AQGRAU',      qgout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
       call outfld('ANGRAU',      ngout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
       call outfld('CLDFGRAU',    cldfgrau,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+      call outfld('MELTGTOT',    meltgtot,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+
    end if
 
    ! Example subcolumn outfld call
