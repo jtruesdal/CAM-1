@@ -895,6 +895,8 @@ end subroutine check_energy_get_integrals
       wl    = 0._r8
       wi    = 0._r8
       tt    = 0._r8
+      mo    = 0._r8
+      mr    = 0._r8
 
       do k = 1, pver
         do i = 1, ncol

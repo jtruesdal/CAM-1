@@ -18,6 +18,7 @@ module restart_physics
                                 pio_inq_varid, &
                                 pio_def_var, pio_def_dim, &
                                 pio_put_var, pio_get_var
+  use scamMod,            only: single_column
 
   implicit none
   private
@@ -58,7 +59,6 @@ module restart_physics
     use prescribed_volcaero, only: init_prescribed_volcaero_restart
     use cam_grid_support,    only: cam_grid_write_attr, cam_grid_id
     use cam_grid_support,    only: cam_grid_header_info_t
-    use cam_pio_utils,       only: cam_pio_def_dim
     use subcol_utils,        only: is_subcol_on
     use subcol,              only: subcol_init_restart
 
@@ -329,7 +329,7 @@ module restart_physics
       call pio_write_darray(File, shf_desc, iodesc, tmpfield, ierr)
 
       call radiation_write_restart(file)
-      
+
     end subroutine write_restart_physics
 
 !#######################################################################
@@ -389,7 +389,7 @@ module restart_physics
 
      call cam_grid_dimensions(physgrid, gdims(1:2))
 
-     if (gdims(2) == 1) then
+     if (gdims(2) == 1 .and. .not. single_column) then
        nhdims = 1
      else
        nhdims = 2

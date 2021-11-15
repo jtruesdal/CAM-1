@@ -568,7 +568,7 @@ contains
                          wetland, vegetation_map )
 
     use mo_constants, only : r2d
-    use scamMod, only : latiop,loniop,scmlat,scmlon,scm_cambfb_mode
+    use scamMod, only : latiopbnd,loniopbnd,scmlat,scmlon,scm_cambfb_mode
     use shr_scam_mod  , only: shr_scam_getCloseLatLon  ! Standardized system subroutines
     use cam_initfiles, only: initial_file_get_id
     use dycore, only : dycore_is
@@ -631,8 +631,8 @@ contains
        if (scm_cambfb_mode) then
           piofile => initial_file_get_id()
           call shr_scam_getCloseLatLon(piofile,scmlat,scmlon,closelat,closelon,latidx,lonidx)
-          ploniop=size(loniop)
-          platiop=size(latiop)
+          ploniop=size(loniopbnd)
+          platiop=size(latiopbnd)
        else
           latidx=1
           lonidx=1
@@ -640,20 +640,20 @@ contains
           platiop=1
        end if
 
-       lon_edge(1) = loniop(lonidx) * r2d - .5_r8*(loniop(2) - loniop(1)) * r2d
+       lon_edge(1) = loniopbnd(lonidx) * r2d - .5_r8*(loniopbnd(2) - loniopbnd(1)) * r2d
 
        if (lonidx.lt.ploniop) then
-          lon_edge(2) = loniop(lonidx+1) * r2d - .5_r8*(loniop(2) - loniop(1)) * r2d
+          lon_edge(2) = loniopbnd(lonidx+1) * r2d - .5_r8*(loniopbnd(2) - loniopbnd(1)) * r2d
        else
-          lon_edge(2) = lon_edge(1) + (loniop(2) - loniop(1)) * r2d
+          lon_edge(2) = lon_edge(1) + (loniopbnd(2) - loniopbnd(1)) * r2d
        end if
 
-       lat_edge(1) = latiop(latidx) * r2d - .5_r8*(latiop(2) - latiop(1)) * r2d
+       lat_edge(1) = latiopbnd(latidx) * r2d - .5_r8*(latiopbnd(2) - latiopbnd(1)) * r2d
 
        if (latidx.lt.platiop) then
-          lat_edge(2) = latiop(latidx+1) * r2d - .5_r8*(latiop(2) - latiop(1)) * r2d
+          lat_edge(2) = latiopbnd(latidx+1) * r2d - .5_r8*(latiopbnd(2) - latiopbnd(1)) * r2d
        else
-          lat_edge(2) = lat_edge(1) + (latiop(2) - latiop(1)) * r2d
+          lat_edge(2) = lat_edge(1) + (latiopbnd(2) - latiopbnd(1)) * r2d
        end if
     else
        do i = 1,plon

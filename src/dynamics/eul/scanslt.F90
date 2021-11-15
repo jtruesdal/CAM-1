@@ -13,7 +13,7 @@ module scanslt
    use pmgrid,           only: plon, plat, plev, beglat, endlat, plevp
    use constituents,     only: pcnst
    use cam_abortutils,   only: endrun
-   use scamMod,          only: single_column
+   use scamMod,          only: single_column,psinit
    use perf_mod
 !-----------------------------------------------------------------------
    implicit none
@@ -172,22 +172,25 @@ subroutine scanslt_initial( adv_state, etamid, gravit_in, detam, cwava )
 ! Allocate memory for scanslt variables
 !
    call adv_state_alloc( adv_state )
-
-   do k = 1, plev
-      etamid(k) = hyam(k) + hybm(k)
-      etaint(k) = hyai(k) + hybi(k)
-   end do
-   etaint(plevp) = hyai(plevp) + hybi(plevp)
 !
 ! For SCAM compute pressure levels to use for eta interface
 !
    if (single_column) then
-      lat = beglat
-      call plevs0(plon, plon, plev, ps(1,lat,n3), pint, pmid, pdel)
-      etamid(:) = pmid(lat,:)
-      etaint(:) = pint(lat,:)
+      if (is_first_step()) then
+         allocate(psinit(plon,plat))
+         psinit=ps(1,1,n3)
+      end if
+      call plevs0(plon, plon, plev, psinit, pint, pmid, pdel)
+      etamid(:) = pmid(1,:)
+      etaint(:) = pint(1,:)
       if ( any(etamid == 0.0_r8) ) call endrun('etamid == 0')
       if ( any(etaint == 0.0_r8) ) call endrun('etaint == 0')
+   else
+      do k = 1, plev
+         etamid(k) = hyam(k) + hybm(k)
+         etaint(k) = hyai(k) + hybi(k)
+      end do
+      etaint(plevp) = hyai(plevp) + hybi(plevp)
    endif
 !
 ! Set slt module variables

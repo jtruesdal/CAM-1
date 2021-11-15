@@ -31,7 +31,7 @@ use eul_control_mod, only: dif2, hdif_order, kmnhdn, hdif_coef, divdampn, eps, &
                            kmxhdc, eul_nsplit
 
 use scamMod,         only: single_column, use_camiop, have_u, have_v, &
-                           have_cldliq, have_cldice, loniop, latiop, scmlat, scmlon, &
+                           have_cldliq, have_cldice, loniopbnd, latiopbnd, scmlat, scmlon, &
                            qobs,tobs,scm_cambfb_mode
 
 use cam_pio_utils,   only: clean_iodesc_list, cam_pio_get_var
@@ -218,7 +218,6 @@ subroutine dyn_init(dyn_in, dyn_out)
    use prognostics,          only: initialize_prognostics
    use scanslt,              only: scanslt_alloc
 
-   use scamMod,              only: single_column
 #if (defined SPMD)
    use spmd_dyn,             only: spmdbuf
 #endif
@@ -390,7 +389,7 @@ subroutine read_inidat()
    integer                     :: m_cnst(1)
    real(r8), allocatable       :: q4_tmp(:,:,:,:)
 
-   integer londimid,dimlon,latdimid,dimlat,latvarid,lonvarid
+   integer londimid,nlons,latdimid,nlats,latvarid,lonvarid
    integer strt(3),cnt(3)
    character(len=3), parameter :: arraydims3(3) = (/ 'lon', 'lev', 'lat' /)
    character(len=3), parameter :: arraydims2(2) = (/ 'lon', 'lat' /)
@@ -549,33 +548,33 @@ subroutine read_inidat()
          ! Get latdeg/londeg from initial file for bfb calculations
          ! needed for dyn_grid to determine bounding area and verticies
          ierr = pio_inq_dimid  (fh_ini, 'lon'  , londimid)
-         ierr = pio_inq_dimlen (fh_ini, londimid, dimlon)
+         ierr = pio_inq_dimlen (fh_ini, londimid, nlons)
          ierr = pio_inq_dimid  (fh_ini, 'lat'  , latdimid)
-         ierr = pio_inq_dimlen (fh_ini, latdimid, dimlat)
+         ierr = pio_inq_dimlen (fh_ini, latdimid, nlats)
          strt(:)=1
-         cnt(1)=dimlon
-         cnt(2)=dimlat
+         cnt(1)=nlons
+         cnt(2)=nlats
          cnt(3)=1
-         allocate(latiop(dimlat))
-         allocate(loniop(dimlon))
-         allocate(tmp2d(dimlon,dimlat))
+         allocate(latiopbnd(nlats))
+         allocate(loniopbnd(nlons))
+         allocate(tmp2d(nlons,nlats))
          ierr = pio_inq_varid (fh_ini,'CLAT1', varid)
          ierr = pio_get_var(fh_ini,varid,strt,cnt,tmp2d)
-         latiop(:)=tmp2d(1,:)
+         latiopbnd(:)=tmp2d(1,:)
          ierr = pio_inq_varid (fh_ini,'CLON1', varid)
          ierr = pio_get_var(fh_ini,varid,strt,cnt,tmp2d)
-         loniop(:)=tmp2d(:,1)
+         loniopbnd(:)=tmp2d(:,1)
          deallocate(tmp2d)
       else
 
          ! Using a standard iop - make the default grid size is
          ! 4x4 degree square for mo_drydep deposition.(standard ARM IOP area)
-         allocate(latiop(2))
-         allocate(loniop(2))
-         latiop(1)=(scmlat-2._r8)*pi/180_r8
-         latiop(2)=(scmlat+2._r8)*pi/180_r8
-         loniop(1)=(mod(scmlon-2.0_r8+360.0_r8,360.0_r8))*pi/180.0_r8
-         loniop(2)=(mod(scmlon+2.0_r8+360.0_r8,360.0_r8))*pi/180.0_r8
+         allocate(latiopbnd(2))
+         allocate(loniopbnd(2))
+         latiopbnd(1)=(scmlat-2._r8)*pi/180_r8
+         latiopbnd(2)=(scmlat+2._r8)*pi/180_r8
+         loniopbnd(1)=(mod(scmlon-2.0_r8+360.0_r8,360.0_r8))*pi/180.0_r8
+         loniopbnd(2)=(mod(scmlon+2.0_r8+360.0_r8,360.0_r8))*pi/180.0_r8
          call setiopupdate()
          ! readiopdata will set all n1 level prognostics to iop value timestep 0
          call readiopdata(timelevel=1)

@@ -1,7 +1,7 @@
 module restart_dynamics
 
   use shr_kind_mod,    only: r8 => shr_kind_r8
-  use pio, only : var_desc_t, file_desc_t, pio_double, pio_unlimited, pio_def_var, &
+  use pio, only : var_desc_t, file_desc_t, pio_int, pio_double, pio_unlimited, pio_def_var, &
 	          pio_def_dim, io_desc_t, pio_offset_kind, pio_put_var, pio_write_darray, &
                   pio_setdebuglevel,pio_setframe, pio_initdecomp, pio_freedecomp, &
                   pio_read_darray, pio_inq_varid, pio_get_var
@@ -12,8 +12,9 @@ module restart_dynamics
 #if ( defined BFB_CAM_SCAM_IOP )
   use iop,             only: dqfx3sav,divq3dsav,divt3dsav,t2sav,betasav,fusav,fvsav
 #endif
-  use cam_logfile,  only: iulog
-  use spmd_utils,   only: masterproc
+  use cam_logfile,     only: iulog
+  use spmd_utils,      only: masterproc
+  use scamMod,         only: single_column, scam_restart_init, scam_restart_write, scam_restart_read
 
   implicit none
   private
@@ -259,6 +260,9 @@ subroutine init_restart_dynamics(File, dyn_out)
        end if
     end do
 
+    if (single_column) then
+       call scam_restart_init(file,hdimids=hdimids,vdimids=vdimids)
+    end if
 
   end subroutine init_restart_dynamics
 
@@ -364,6 +368,10 @@ subroutine init_restart_dynamics(File, dyn_out)
     call pio_freedecomp(File, iodesc2d)
     call pio_freedecomp(File, iodesc3d)
     call pio_freedecomp(File, iodesc4d)
+
+    if (single_column) then
+       call scam_restart_write(File)
+    end if
     
     return
   end subroutine write_restart_dynamics
@@ -511,6 +519,10 @@ subroutine init_restart_dynamics(File, dyn_out)
     call pio_freedecomp(File, iodesc2d)
     call pio_freedecomp(File, iodesc3d)
     call pio_freedecomp(File, iodesc4d)
+
+    if (single_column) then
+       call scam_restart_read(File)
+    end if
 
     return
 
