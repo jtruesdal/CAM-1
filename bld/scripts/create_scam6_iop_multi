@@ -57,7 +57,7 @@ set CASENAME=${CASETITLE}.${COMPSET}
 # create case
 #    scam_mandatory sets up the SCAM run for use with subsequent IOP(s)
 #------------------
-$CESMDIR/cime/scripts/create_newcase --compset $COMPSET  --res $RES --compiler $COMPILER --case $CASEDIR/$CASENAME.base  --user-mods-dir ${MODSDIR}/scam_mandatory --run-unsupported
+$CESMDIR/cime/scripts/create_newcase --compset $COMPSET  --res $RES --compiler $COMPILER --case $CASEDIR/$CASENAME.base  --user-mods-dir ${MODSDIR}/scam_mandatory --run-unsupported pecount 1
 
 cd  $CASEDIR/$CASENAME.base
 

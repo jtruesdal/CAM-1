@@ -67,7 +67,7 @@ set CASENAME=${CASETITLE}.${COMPSET}.${IOP}
 # create case
 #------------------
 
-$CESMDIR/cime/scripts/create_newcase --compset $COMPSET  --res $RES --compiler $COMPILER --case $CASEDIR/$CASENAME  --user-mods-dir ${MODSDIR}/${IOPNAME} --run-unsupported
+$CESMDIR/cime/scripts/create_newcase --compset $COMPSET  --res $RES --compiler $COMPILER --case $CASEDIR/$CASENAME  --user-mods-dir ${MODSDIR}/${IOPNAME} --run-unsupported --pecount 1
 
 cd  $CASEDIR/$CASENAME
 

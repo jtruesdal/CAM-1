@@ -4,7 +4,7 @@
 
   <grid name="any">
     <mach name="any">
-      <pes pesize="any" compset="CAM[45]0%SCAM">
+      <pes pesize="any" compset="%SCAM">
 	<comment>none</comment>
 	<ntasks>
 	  <ntasks_atm>1</ntasks_atm>
