@@ -141,7 +141,7 @@ subroutine dyn_readnl(nlfilename)
 
   logical            :: fv3_adjust_dry_mass, fv3_consv_am, fv3_do_sat_adj, fv3_do_vort_damp, &
                         fv3_dwind_2d, fv3_fill, fv3_fv_debug, fv3_fv_diag, fv3_hydrostatic, &
-                        fv3_make_nh, fv3_no_dycore, fv3_range_warn
+                        fv3_make_nh, fv3_no_dycore, fv3_range_warn, fv3_external_eta
 
   ! fms_nml namelist variables - these namelist variables defined in fv3 library without fv3_
 
@@ -183,7 +183,7 @@ subroutine dyn_readnl(nlfilename)
        fv3_n_split,fv3_n_sponge,fv3_na_init,fv3_ncnst,fv3_no_dycore, &
        fv3_nord,fv3_npx,fv3_npy,fv3_npz,fv3_ntiles,fv3_nwat, &
        fv3_print_freq,fv3_range_warn,fv3_rf_cutoff,fv3_tau, &
-       fv3_vtdm4
+       fv3_vtdm4, fv3_external_eta
   !--------------------------------------------------------------------------
 
   ! defaults for namelist variables not set by build-namelist
@@ -262,6 +262,7 @@ subroutine dyn_readnl(nlfilename)
      write (iulog,*) '  fv3_do_sat_adj            = ',fv3_do_sat_adj
      write (iulog,*) '  fv3_do_vort_damp          = ',fv3_do_vort_damp
      write (iulog,*) '  fv3_dwind_2d              = ',fv3_dwind_2d
+     write (iulog,*) '  fv3_external_eta          = ',fv3_external_eta
      write (iulog,*) '  fv3_fill                  = ',fv3_fill
      write (iulog,*) '  fv3_fv_debug              = ',fv3_fv_debug
      write (iulog,*) '  fv3_fv_diag               = ',fv3_fv_diag
@@ -1540,7 +1541,8 @@ subroutine set_phis(dyn_in)
 
       fieldname = 'PHIS'
       if (dyn_field_exists(fh_topo, trim(fieldname))) then
-         call read_dyn_var(fieldname, fh_topo, 'ncol', phis_tmp)
+!jt         call read_dyn_var(fieldname, fh_topo, 'ncol', phis_tmp)
+         call read_topo_field_1d(fieldname, fh_topo, 'ncol', phis_tmp)
       else
          call endrun(subname//': Could not find PHIS field on input datafile')
       end if
@@ -2034,6 +2036,41 @@ logical function dyn_field_exists(fh, fieldname, required)
    dyn_field_exists = found
 
 end function dyn_field_exists
+
+!========================================================================================
+
+  subroutine read_topo_field_1d(fieldname, fh, dimname, buffer)
+    use pio,                 only: file_desc_t
+    use ncdio_atm,           only: infld
+
+    ! Dummy arguments
+    character(len=*),  intent(in)    :: fieldname
+    type(file_desc_t), intent(inout) :: fh
+    character(len=*),  intent(in)    :: dimname
+    real(r8),          intent(inout) :: buffer(:, :)
+
+    ! Local variables
+    logical                  :: found
+    integer :: is,ie,js,je
+    !--------------------------------------------------------------------------
+
+    is = lbound(buffer,1)
+    ie = ubound(buffer,1)
+    js = lbound(buffer,2)
+    je = ubound(buffer,2)
+    buffer = 0.0_r8
+    call infld(trim(fieldname), fh, dimname, is, ie, js, je, buffer,    &
+         found, gridname=ini_grid_name)
+    if(.not. found) then
+      call endrun('READ_TOPO_FIELD_1D: Could not find '//trim(fieldname)//' field on input datafile')
+    end if
+
+    ! This code allows use of compiler option to set uninitialized values
+    ! to NaN.  In that case infld can return NaNs where the element ini_grid_name points
+    ! are not "unique columns"
+    where (isnan(buffer)) buffer = 0.0_r8
+
+  end subroutine read_topo_field_1d
 
 !========================================================================================
 

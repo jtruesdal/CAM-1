@@ -8356,6 +8356,13 @@ fv3_nord = 0 and fv3_d2_bg = 0.02.
 Default: 0.15
 </entry>
 
+<entry id="fv3_external_eta" type="logical" category="dyn_fv3"
+       group="fv_core_nml" valid_values="" >
+Logical:  read vertical level coefficients (ak, bk) instead of 
+hard-coded values
+Default: TRUE
+</entry>
+
 <entry id="fv3_fill" type="logical" category="dyn_fv3"
        group="fv_core_nml" valid_values="" >
 Logical: Fills in negative tracer values by taking positive tracers from

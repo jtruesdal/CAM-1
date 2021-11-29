@@ -2709,6 +2709,7 @@
 <fv3_d2_bg_k1                                                               > 0.15D0   </fv3_d2_bg_k1>
 <fv3_d2_bg_k2                                                               > 0.02D0   </fv3_d2_bg_k2>
 <fv3_d4_bg                                                                  > 0.15D0   </fv3_d4_bg>
+<fv3_external_eta                                                           > .true.    </fv3_external_eta>
 <fv3_fill                                                                   > .true.    </fv3_fill>
 <fv3_fv_debug                                                               > .false.   </fv3_fv_debug>
 <fv3_fv_diag                                                                > .false.   </fv3_fv_diag>

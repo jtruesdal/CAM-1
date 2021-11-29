@@ -37,8 +37,6 @@ cpp_dirs += $(shell cat Filepath)
 VPATH := $(foreach dir,$(cpp_dirs),$(wildcard $(dir)))
 VPATH := $(subst $(space),:,$(VPATH))
 
-###INCS    := $(foreach dir,$(cpp_dirs),-I$(dir))
-
 F90      := $(FC)
 C90      := $(CC)
 F90FLAGS := $(FREEFLAGS) $(FFLAGS)
@@ -46,12 +44,6 @@ F90FLAGS := $(FREEFLAGS) $(FFLAGS)
 # Additional GNU flags needed for FV3
 ifeq ($(strip $(COMPILER)),gnu)
   F90FLAGS += -fcray-pointer
-#  F90FLAGS += -fdec
-#  F90FLAGS += -fno-range-check
-# also, below we inhibit all GNU compiler warnings for FMS because (1) we have no control
-  # over FMS, and (2) some GNU warning msgs contain characters that require encoding/decoding.
-  #  F90FLAGS += -w
-  #  CFLAGS += -w
 endif
 
 complib:  $(COMPLIB) Depends
@@ -82,15 +74,8 @@ Deppath: Filepath
 	$(CP) -f Filepath $@
 	@echo "$(MINCROOT)" >> $@
 
-#Srcfiles:
-#	@echo "$(SOURCES)" > $@
-
 Srcfiles: Filepath
 	$(CASETOOLS)/mkSrcfiles
-
-#Filepath:
-#	@echo "$(VPATH)" > $@
-
 
 #-------------------------------------------------------------------------------
 

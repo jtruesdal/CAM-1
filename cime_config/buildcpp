@@ -84,14 +84,20 @@ def buildcpp(case):
 
     # if need to build - then construct configure command
     config_opts = ["-s", "-fc_type", compiler, "-dyn", cam_dycore,
-                   "-hgrid", atm_grid, "-cpl", comp_interface,
-                   "-usr_src", os.path.join(caseroot, "SourceMods", "src.cam")]
-    config_opts = ["-s", "-fc_type", compiler, "-dyn", cam_dycore,
                    "-hgrid", atm_grid, "-cpl", comp_interface]
     if cam_dycore == 'fv3':
         srccam=os.path.join(caseroot, "SourceMods", "src.cam")
         srcfv3=os.path.join(caseroot, "SourceMods", "src.cam.libfv3core")
         config_opts += ["-usr_src", "{},{}".format(srccam, srcfv3)]
+        config_opts += ["-fv3core_libdir", os.path.join(exeroot,"atm","obj","atmos_cubed_sphere")]
+    elif cam_dycore == 'mpas':
+        srccam=os.path.join(caseroot, "SourceMods", "src.cam")
+        srcmpas=os.path.join(caseroot, "SourceMods", "src.cam.libmpas")
+        config_opts += ["-usr_src", "{},{}".format(srccam, srcmpas)]
+        config_opts += ["-mpas_libdir", os.path.join(exeroot, "atm", "obj", "mpas")]
+    else :
+        srccam=os.path.join(caseroot, "SourceMods", "src.cam")
+        config_opts += ["-usr_src", "{}".format(srccam)]
 
     if nlev:
         config_opts += ["-nlev", nlev]
@@ -110,9 +116,6 @@ def buildcpp(case):
     else:
         config_opts.append("-smp")
 
-    if cam_dycore == 'fv3':
-         config_opts += ["-fv3core_libdir", os.path.join(exeroot,"atm","obj","atmos_cubed_sphere")]
-
     # The ocean component setting is only used by CAM to do attribute matching for
     # setting default tuning parameter values.  In SOM mode we want to use the same
     # tunings as the fully coupled B compset, so set the ocean component to pop in
@@ -128,12 +131,6 @@ def buildcpp(case):
 
     if "-cosp" in config_opts:
         config_opts += ["-cosp_libdir", os.path.join(exeroot, "atm", "obj", "cosp")]
-
-    if cam_dycore == 'mpas':
-        srccam=os.path.join(caseroot, "SourceMods", "src.cam")
-        srcmpas=os.path.join(caseroot, "SourceMods", "src.cam.libfv3core")
-        config_opts += ["-usr_src", "{},{}".format(srccam, srcmpas)]
-        config_opts += ["-mpas_libdir", os.path.join(exeroot, "atm", "obj", "mpas")]
 
     camconf = os.path.join(caseroot, "Buildconf", "camconf")
     if not os.path.isdir(camconf):
