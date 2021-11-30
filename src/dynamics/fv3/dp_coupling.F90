@@ -163,7 +163,7 @@ subroutine d_p_coupling(phys_state, phys_tend, pbuf2d, dyn_out)
 !!$     allocate(frontgf_phys(pcols, pver, begchunk:endchunk))
 !!$     allocate(frontga_phys(pcols, pver, begchunk:endchunk))
 !!$  end if
-  !$omp parallel do num_threads(max_num_threads) private (col_ind, lchnk, icol, blk_ind, ilyr, m)
+  !$omp parallel do private (col_ind, lchnk, icol, blk_ind, ilyr, m)
   do col_ind = 1, columns_on_task
      call get_dyn_col_p(col_ind, blk_num, blk_ind)
      call get_chunk_info_p(col_ind, lchnk, icol)
@@ -323,7 +323,7 @@ subroutine p_d_coupling(phys_state, phys_tend, dyn_in)
   Atm=>dyn_in%atm
 
   call t_startf('pd_copy')
-  !$omp parallel do num_threads(max_num_threads) private (col_ind, lchnk, icol, ie, blk_ind, ilyr, m)
+  !$omp parallel do private (col_ind, lchnk, icol, ie, blk_ind, ilyr, m)
   do col_ind = 1, columns_on_task
      call get_dyn_col_p(col_ind, blk_num, blk_ind)
      call get_chunk_info_p(col_ind, lchnk, icol)
