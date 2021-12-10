@@ -412,6 +412,7 @@ fi
 
 if [ "${cesm_test_suite}" != "none" -a -n "${cesm_test_mach}" ]; then
   if [ "${hostname:0:5}" != "izumi" ]; then
+    source /glade/u/apps/ch/opt/lmod/7.5.3/lmod/lmod/init/sh
     module load python
   fi
 
