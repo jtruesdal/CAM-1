@@ -2054,12 +2054,11 @@ sub write_fv3core_filepath
             if ($dir =~ m/libfv3core/) {print $fh "$dir\n";}
         }
     }
-#    my $CASEROOT = "$ENV{CASEROOT}";
-#    print $fh "$CASEROOT/SourceMods/src.cam.libfv3core\n";
-    print $fh "$camsrcdir/src/dynamics/fv3/microphys\n";
+    print $fh "$camsrcdir/src/dynamics/fv3/src_override\n";
     print $fh "$camsrcdir/src/dynamics/fv3/atmos_cubed_sphere\n";
     print $fh "$camsrcdir/src/dynamics/fv3/atmos_cubed_sphere/model\n";
     print $fh "$camsrcdir/src/dynamics/fv3/atmos_cubed_sphere/tools\n";
+    print $fh "$camsrcdir/src/dynamics/fv3/atmos_cubed_sphere/GFDL_tools\n";
 
     $fh->close;
 }
@@ -2120,7 +2119,7 @@ sub write_filepath
 
     # Weak scaling fix. This has to come before physics/cam and before dycores
     # It also has to come before utils (which is already near the end).
-    if ($dyn eq 'se' or $dyn_pkg eq 'fv3') {
+    if ($dyn eq 'se' or $dyn_pkg eq 'fv3' or $dyn eq 'mpas') {
       print $fh "$camsrcdir/src/infrastructure\n";
     }
 
