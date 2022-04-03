@@ -240,7 +240,7 @@ contains
     if (lq) then
       ncnst = size(m_cnst, 1)
       if ((vcoord == vc_moist_pressure) .or. (vcoord == vc_dry_pressure)) then
-        do m = 2, ncnst
+        do m = 1, ncnst
           call cnst_init_default(m_cnst(m), latvals, lonvals, Q(:,:,m_cnst(m)),&
                mask=mask_use, verbose=verbose_use, notfound=.false.)
         end do
