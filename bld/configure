@@ -2051,7 +2051,7 @@ sub write_fv3core_filepath
     if ($usr_src  =~ /\S+/) {
         my @dirs = split ',', $usr_src;
         while ( my $dir = shift @dirs ) {
-            if ($dir =~ m/libfv3core/) {print $fh "$dir\n";}
+            if ($dir =~ m/cam_libfv3/) {print $fh "$dir\n";}
         }
     }
     print $fh "$camsrcdir/src/dynamics/fv3/src_override\n";
