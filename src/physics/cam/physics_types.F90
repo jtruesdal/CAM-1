@@ -14,6 +14,7 @@ module physics_types
   use cam_abortutils,   only: endrun
   use phys_control,     only: waccmx_is
   use shr_const_mod,    only: shr_const_rwv
+  use budgets,          only: pbudget,budget_name
 
   implicit none
   private          ! Make default type private to the module
@@ -104,11 +105,6 @@ module physics_types
           te_ini,         &! vertically integrated total (kinetic + static) energy of initial state
           te_cur,         &! vertically integrated total (kinetic + static) energy of current state
           tw_ini,         &! vertically integrated total water of initial state
-          te_AP,          &! vertically integrated total water of initial state
-          te_AM,          &! vertically integrated total water of initial state
-          te_BF,          &! vertically integrated total water of initial state
-          te_BP,          &! vertically integrated total water of initial state
-          area_scale,     &! vertically integrated total water of initial state
           tw_cur           ! vertically integrated total water of new state
      real(r8), dimension(:,:),allocatable          :: &
           temp_ini,       &! Temperature of initial state (used for energy computations)
@@ -121,11 +117,7 @@ module physics_types
           lonmapback, &! map from column to unique lon for that column
           cid        ! unique column id
      integer :: ulatcnt, &! number of unique lats in chunk
-                uloncnt, &!   ! number of unique lons in chunk
-                teAPcnt(2), &! vertically integrated total water of state after physics
-                teBPcnt(2), &! vertically integrated total water of state before physics
-                teBFcnt(2), &! vertically integrated total water of state before fixer
-                teAMcnt(2)   ! vertically integrated total water of state after dry mass adjustment
+                uloncnt   ! number of unique lons in chunk
 
   end type physics_state
 
@@ -550,16 +542,6 @@ contains
          varname="state%te_ini",    msg=msg)
     call shr_assert_in_domain(state%te_cur(:ncol,:),    is_nan=.false., &
          varname="state%te_cur",    msg=msg)
-    call shr_assert_in_domain(state%te_AP(:ncol,:),    is_nan=.false., &
-         varname="state%te_AP",    msg=msg)
-    call shr_assert_in_domain(state%te_BP(:ncol,:),    is_nan=.false., &
-         varname="state%te_BP",    msg=msg)
-    call shr_assert_in_domain(state%te_BF(:ncol,:),    is_nan=.false., &
-         varname="state%te_BF",    msg=msg)
-    call shr_assert_in_domain(state%te_AM(:ncol,:),    is_nan=.false., &
-         varname="state%te_AM",    msg=msg)
-    call shr_assert_in_domain(state%area_scale(:ncol,:),    is_nan=.false., &
-         varname="state%area_scale",    msg=msg)
     call shr_assert_in_domain(state%tw_ini(:ncol,:),    is_nan=.false., &
          varname="state%tw_ini",    msg=msg)
     call shr_assert_in_domain(state%tw_cur(:ncol,:),    is_nan=.false., &
@@ -638,16 +620,6 @@ contains
          varname="state%te_ini",    msg=msg)
     call shr_assert_in_domain(state%te_cur(:ncol,:),    lt=posinf_r8, gt=neginf_r8, &
          varname="state%te_cur",    msg=msg)
-    call shr_assert_in_domain(state%te_AP(:ncol,:),     lt=posinf_r8, gt=neginf_r8, &
-         varname="state%te_AP",    msg=msg)
-    call shr_assert_in_domain(state%te_BP(:ncol,:),     lt=posinf_r8, gt=neginf_r8, &
-         varname="state%te_BP",    msg=msg)
-    call shr_assert_in_domain(state%te_BF(:ncol,:),     lt=posinf_r8, gt=neginf_r8, &
-         varname="state%te_BF",    msg=msg)
-    call shr_assert_in_domain(state%te_AM(:ncol,:),     lt=posinf_r8, gt=neginf_r8, &
-         varname="state%te_AM",    msg=msg)
-    call shr_assert_in_domain(state%area_scale(:ncol,:),     lt=posinf_r8, gt=neginf_r8, &
-         varname="state%area_scale",    msg=msg)
     call shr_assert_in_domain(state%tw_ini(:ncol,:),    lt=posinf_r8, gt=neginf_r8, &
          varname="state%tw_ini",    msg=msg)
     call shr_assert_in_domain(state%tw_cur(:ncol,:),    lt=posinf_r8, gt=neginf_r8, &
@@ -705,6 +677,12 @@ contains
     do m = 1,pcnst
        call shr_assert_in_domain(state%q(:ncol,:,m),    lt=posinf_r8, gt=neginf_r8, &
             varname="state%q ("//trim(cnst_name(m))//")", msg=msg)
+    end do
+
+    ! Budget variables
+    do m = 1,pbudget
+       call shr_assert_in_domain(state%te_budgets(:ncol,:,m),    lt=posinf_r8, gt=neginf_r8, &
+            varname="state%te_budgets ("//trim(budget_name(m))//")", msg=msg)
     end do
 
   end subroutine physics_state_check
@@ -1117,7 +1095,7 @@ end subroutine physics_ptend_copy
     do i=1,ncol
        phys_state%lat(i) = rlat(i)
        phys_state%lon(i) = rlon(i)
-       phys_state%area_scale(i,:) = area(i)/4.0_r8*pi
+!!jt       phys_state%area_scale(i,:) = area(i)/4.0_r8*pi
     end do
     call init_geo_unique(phys_state,ncol)
 
@@ -1348,11 +1326,6 @@ end subroutine physics_ptend_copy
      end do
      state_out%te_ini(:ncol,:) = state_in%te_ini(:ncol,:)
      state_out%te_cur(:ncol,:) = state_in%te_cur(:ncol,:)
-     state_out%te_AP(:ncol,:)  = state_in%te_AP(:ncol,:)
-     state_out%te_BP(:ncol,:)  = state_in%te_BP(:ncol,:)
-     state_out%te_BF(:ncol,:)  = state_in%te_BF(:ncol,:)
-     state_out%te_AM(:ncol,:)  = state_in%te_AM(:ncol,:)
-     state_out%area_scale(:ncol,:)  = state_in%area_scale(:ncol,:)
      state_out%tw_ini(:ncol,:) = state_in%tw_ini(:ncol,:)
      state_out%tw_cur(:ncol,:) = state_in%tw_cur(:ncol,:)
 
@@ -1616,6 +1589,9 @@ subroutine physics_state_alloc(state,lchnk,psetcols)
   allocate(state%q(psetcols,pver,pcnst), stat=ierr)
   if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%q')
 
+  allocate(state%te_budgets(psetcols,2,pbudget), stat=ierr)
+  if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%te_budgets')
+
   allocate(state%pint(psetcols,pver+1), stat=ierr)
   if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%pint')
 
@@ -1636,21 +1612,6 @@ subroutine physics_state_alloc(state,lchnk,psetcols)
 
   allocate(state%te_cur(psetcols,2), stat=ierr)
   if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%te_cur')
-
-  allocate(state%te_AP(psetcols,2), stat=ierr)
-  if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%te_AP')
-
-  allocate(state%te_BP(psetcols,2), stat=ierr)
-  if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%te_BP')
-
-  allocate(state%te_BF(psetcols,2), stat=ierr)
-  if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%te_BF')
-
-  allocate(state%te_AM(psetcols,2), stat=ierr)
-  if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%te_AM')
-
-  allocate(state%area_scale(psetcols,2), stat=ierr)
-  if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%area_scale')
 
   allocate(state%tw_ini(psetcols,2), stat=ierr)
   if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%tw_ini')
@@ -1696,6 +1657,7 @@ subroutine physics_state_alloc(state,lchnk,psetcols)
   state%exner(:,:) = inf
   state%zm(:,:) = inf
   state%q(:,:,:) = inf
+  state%te_budgets(:,:,:) = 0._r8
 
   state%pint(:,:) = inf
   state%pintdry(:,:) = inf
@@ -1705,11 +1667,6 @@ subroutine physics_state_alloc(state,lchnk,psetcols)
 
   state%te_ini(:,:) = inf
   state%te_cur(:,:) = inf
-  state%te_AP(:,:) = inf
-  state%te_BP(:,:) = inf
-  state%te_BF(:,:) = inf
-  state%te_AM(:,:) = inf
-  state%area_scale(:,:) = inf
   state%tw_ini(:,:) = inf
   state%tw_cur(:,:) = inf
   state%temp_ini(:,:) = inf
@@ -1814,21 +1771,6 @@ subroutine physics_state_dealloc(state)
 
   deallocate(state%te_cur, stat=ierr)
   if ( ierr /= 0 ) call endrun('physics_state_dealloc error: deallocation error for state%te_cur')
-
-  deallocate(state%te_AP, stat=ierr)
-  if ( ierr /= 0 ) call endrun('physics_state_dealloc error: deallocation error for state%te_AP')
-
-  deallocate(state%te_BP, stat=ierr)
-  if ( ierr /= 0 ) call endrun('physics_state_dealloc error: deallocation error for state%te_BP')
-
-  deallocate(state%te_BF, stat=ierr)
-  if ( ierr /= 0 ) call endrun('physics_state_dealloc error: deallocation error for state%te_BF')
-
-  deallocate(state%te_AM, stat=ierr)
-  if ( ierr /= 0 ) call endrun('physics_state_dealloc error: deallocation error for state%te_AM')
-
-  deallocate(state%area_scale, stat=ierr)
-  if ( ierr /= 0 ) call endrun('physics_state_dealloc error: deallocation error for state%area_scale')
 
   deallocate(state%tw_ini, stat=ierr)
   if ( ierr /= 0 ) call endrun('physics_state_dealloc error: deallocation error for state%tw_ini')
