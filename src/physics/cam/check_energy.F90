@@ -990,11 +990,11 @@ end subroutine check_energy_get_integrals
            vc_loc, ps = state%ps(1:ncol), phis = state%phis(1:ncol),                   &
            z = state%z_ini(1:ncol,:), se = se, ke = ke, wv = wv, liq = liq, ice = ice)
 
-      call cnst_get_ind('TT_LW' , ixtt    , abort=.false.)
+      call cnst_get_ind('TT_UN' , ixtt    , abort=.false.)
 
       tt    = 0._r8
       if (ixtt > 1) then
-        if (name_out6 == 'TT_pAM'.or.name_out6 == 'TT_zAM') then
+        if (name_out6 == 'TT_phAM'.or.name_out6 == 'TT_dyAM') then
           !
           ! after dme_adjust mixing ratios are all wet
           !

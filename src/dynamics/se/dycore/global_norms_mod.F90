@@ -225,7 +225,7 @@ contains
     use mesh_mod,       only: MeshUseMeshFile
     use dimensions_mod, only: ksponge_end, kmvis_ref, kmcnd_ref,rho_ref
     use physconst,      only: cpair
-  
+    use std_atm_profile,only: std_atm_height  
     type(element_t)      , intent(inout) :: elem(:)
     integer              , intent(in) :: nets,nete
     type (hybrid_t)      , intent(in) :: hybrid
@@ -247,7 +247,7 @@ contains
     real (kind=r8) :: x, y, noreast, nw, se, sw
     real (kind=r8), dimension(np,np,nets:nete) :: zeta
     real (kind=r8) :: lambda_max, lambda_vis, min_gw, lambda,umax, ugw
-    real (kind=r8) :: scale1,scale2,scale3, max_laplace
+    real (kind=r8) :: scale1,scale2,scale3, max_laplace,z(nlev)
     integer :: ie,corner, i, j, rowind, colind, k
     type (quadrature_t)    :: gp
     character(LEN=256) :: rk_str
@@ -640,10 +640,15 @@ contains
         nu_lev(k)     = (1.0_r8-scale1)*nu    +scale1*nu_max
         nu_t_lev(k)   = (1.0_r8-scale1)*nu_p  +scale1*nu_max
       end if
-      
-      if (hybrid%masterthread) write(iulog,*) "nu_t_lev     =",k,nu_t_lev(k)
-      if (hybrid%masterthread) write(iulog,*) "nu,nu_div_lev=",k,nu_lev(k),nu_div_lev(k)
     end do
+    if (hybrid%masterthread)then
+      write(iulog,*) "z computed from barometric formula (using US std atmosphere)"
+      call std_atm_height(pmid(:),z(:))
+      write(iulog,*) "k,pmid_ref,z,nu_lev,nu_t_lev,nu_div_lev"
+      do k=1,nlev
+        write(iulog,'(i3,5e11.4)') k,pmid(k),z(k),nu_lev(k),nu_t_lev(k),nu_div_lev(k)
+      end do
+    end if
 
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

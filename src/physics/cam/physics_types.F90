@@ -1155,7 +1155,7 @@ end subroutine physics_ptend_copy
   end subroutine init_geo_unique
 
 !===============================================================================
-  subroutine physics_dme_adjust(state, tend, qini, dt)
+  subroutine physics_dme_adjust(state, tend, fdq3d,dt)
     !-----------------------------------------------------------------------
     !
     ! Purpose: Adjust the dry mass in each layer back to the value of physics input state
@@ -1186,7 +1186,7 @@ end subroutine physics_ptend_copy
     !
     type(physics_state), intent(inout) :: state
     type(physics_tend ), intent(inout) :: tend
-    real(r8),            intent(in   ) :: qini(pcols,pver)    ! initial specific humidity
+    real(r8),            intent(in   ) :: fdq3d(pcols,pver)   ! water increment
     real(r8),            intent(in   ) :: dt                  ! model physics timestep
     !
     !---------------------------Local workspace-----------------------------
@@ -1199,7 +1199,7 @@ end subroutine physics_ptend_copy
     real(r8) :: utmp(pcols)   ! temp variable for recalculating the initial u values
     real(r8) :: vtmp(pcols)   ! temp variable for recalculating the initial v values
 
-    real(r8) :: zvirv(pcols,pver)    ! Local zvir array pointer
+    real(r8) :: zvirv(pcols,pver)                                     ! Local zvir array pointer
 
     real(r8),allocatable :: cpairv_loc(:,:)
     !
@@ -1219,10 +1219,8 @@ end subroutine physics_ptend_copy
     ! constituents, momentum, and total energy
     state%ps(:ncol) = state%pint(:ncol,1)
     do k = 1, pver
-
-       ! adjusment factor is just change in water vapor
-       fdq(:ncol) = 1._r8 + state%q(:ncol,k,1) - qini(:ncol,k)
-
+       ! adjusment factor is change in thermodynamically active water species
+       fdq(:ncol) = 1._r8 + fdq3d(:ncol,k)
        ! adjust constituents to conserve mass in each layer
        do m = 1, pcnst
           state%q(:ncol,k,m) = state%q(:ncol,k,m) / fdq(:ncol)
