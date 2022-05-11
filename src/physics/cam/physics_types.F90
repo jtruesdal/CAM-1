@@ -14,7 +14,7 @@ module physics_types
   use cam_abortutils,   only: endrun
   use phys_control,     only: waccmx_is
   use shr_const_mod,    only: shr_const_rwv
-  use budgets,          only: pbudget,budget_name
+  use budgets,          only: budget_array_max,budget_name
 
   implicit none
   private          ! Make default type private to the module
@@ -140,7 +140,6 @@ module physics_types
      integer   ::   psetcols=0 ! max number of columns set- if subcols = pcols*psubcols, else = pcols
 
      character*24 :: name    ! name of parameterization which produced tendencies.
-
      logical ::             &
           ls = .false.,               &! true if dsdt is returned
           lu = .false.,               &! true if dudt is returned
@@ -439,7 +438,6 @@ contains
     end if
 
     if (state_debug_checks) call physics_state_check(state, ptend%name)
-
     deallocate(cpairv_loc, rairv_loc)
 
     ! Deallocate ptend
@@ -599,6 +597,12 @@ contains
     call shr_assert_in_domain(state%q(:ncol,:,:),       is_nan=.false., &
          varname="state%q",         msg=msg)
 
+    ! Budget variables
+    do m = 1,budget_array_max
+       call shr_assert_in_domain(state%te_budgets(:ncol,:,m),       is_nan=.false., &
+            varname="state%te_budgets ("//trim(budget_name(m))//")", msg=msg)
+    end do
+
     ! Now run other checks (i.e. values are finite and within a range that
     ! is physically meaningful).
 
@@ -680,11 +684,10 @@ contains
     end do
 
     ! Budget variables
-    do m = 1,pbudget
+    do m = 1,budget_array_max
        call shr_assert_in_domain(state%te_budgets(:ncol,:,m),    lt=posinf_r8, gt=neginf_r8, &
             varname="state%te_budgets ("//trim(budget_name(m))//")", msg=msg)
     end do
-
   end subroutine physics_state_check
 
 !===============================================================================
@@ -1059,7 +1062,6 @@ end subroutine physics_ptend_copy
 !===============================================================================
 
   subroutine physics_state_set_grid(lchnk, phys_state)
-
 !-----------------------------------------------------------------------
 ! Set the grid components of the physics_state object
 !-----------------------------------------------------------------------
@@ -1153,7 +1155,7 @@ end subroutine physics_ptend_copy
   end subroutine init_geo_unique
 
 !===============================================================================
-  subroutine physics_dme_adjust(state, tend, qini, dt)
+  subroutine physics_dme_adjust(state, tend, fdq3d,dt)
     !-----------------------------------------------------------------------
     !
     ! Purpose: Adjust the dry mass in each layer back to the value of physics input state
@@ -1184,7 +1186,7 @@ end subroutine physics_ptend_copy
     !
     type(physics_state), intent(inout) :: state
     type(physics_tend ), intent(inout) :: tend
-    real(r8),            intent(in   ) :: qini(pcols,pver)    ! initial specific humidity
+    real(r8),            intent(in   ) :: fdq3d(pcols,pver)   ! water increment
     real(r8),            intent(in   ) :: dt                  ! model physics timestep
     !
     !---------------------------Local workspace-----------------------------
@@ -1197,7 +1199,7 @@ end subroutine physics_ptend_copy
     real(r8) :: utmp(pcols)   ! temp variable for recalculating the initial u values
     real(r8) :: vtmp(pcols)   ! temp variable for recalculating the initial v values
 
-    real(r8) :: zvirv(pcols,pver)    ! Local zvir array pointer
+    real(r8) :: zvirv(pcols,pver)                                     ! Local zvir array pointer
 
     real(r8),allocatable :: cpairv_loc(:,:)
     !
@@ -1217,10 +1219,8 @@ end subroutine physics_ptend_copy
     ! constituents, momentum, and total energy
     state%ps(:ncol) = state%pint(:ncol,1)
     do k = 1, pver
-
-       ! adjusment factor is just change in water vapor
-       fdq(:ncol) = 1._r8 + state%q(:ncol,k,1) - qini(:ncol,k)
-
+       ! adjusment factor is change in thermodynamically active water species
+       fdq(:ncol) = 1._r8 + fdq3d(:ncol,k)
        ! adjust constituents to conserve mass in each layer
        do m = 1, pcnst
           state%q(:ncol,k,m) = state%q(:ncol,k,m) / fdq(:ncol)
@@ -1378,6 +1378,14 @@ end subroutine physics_ptend_copy
        do k = 1, pver
           do i = 1, ncol
              state_out%q(i,k,m) = state_in%q(i,k,m)
+          end do
+       end do
+    end do
+
+    do m = 1, budget_array_max
+       do k = 1, 7
+          do i = 1, ncol
+             state_out%te_budgets(i,k,m) = state_in%te_budgets(i,k,m)
           end do
        end do
     end do
@@ -1589,7 +1597,7 @@ subroutine physics_state_alloc(state,lchnk,psetcols)
   allocate(state%q(psetcols,pver,pcnst), stat=ierr)
   if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%q')
 
-  allocate(state%te_budgets(psetcols,2,pbudget), stat=ierr)
+  allocate(state%te_budgets(psetcols,7,budget_array_max), stat=ierr)
   if ( ierr /= 0 ) call endrun('physics_state_alloc error: allocation error for state%te_budgets')
 
   allocate(state%pint(psetcols,pver+1), stat=ierr)
@@ -1657,7 +1665,7 @@ subroutine physics_state_alloc(state,lchnk,psetcols)
   state%exner(:,:) = inf
   state%zm(:,:) = inf
   state%q(:,:,:) = inf
-  state%te_budgets(:,:,:) = 0._r8
+  state%te_budgets(:,:,:) = inf
 
   state%pint(:,:) = inf
   state%pintdry(:,:) = inf
@@ -1675,6 +1683,7 @@ subroutine physics_state_alloc(state,lchnk,psetcols)
 end subroutine physics_state_alloc
 
 !===============================================================================
+
 subroutine physics_state_dealloc(state)
 
 ! deallocate the individual state components
