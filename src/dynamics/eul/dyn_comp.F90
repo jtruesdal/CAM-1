@@ -349,6 +349,17 @@ subroutine dyn_init(dyn_in, dyn_out)
       call add_default('VAT',             history_budget_histfile_num, ' ')
       call add_default('DTH',             history_budget_histfile_num, ' ')
    end if
+! Restart allocate latiop/loniop for drydep
+   if (single_column) then
+      ! Using a standard iop - make the default grid size is
+      ! 4x4 degree square for mo_drydep deposition.(standard ARM IOP area)
+      allocate(latiop(2))
+      allocate(loniop(2))
+      latiop(1)=(scmlat-2._r8)*pi/180_r8
+      latiop(2)=(scmlat+2._r8)*pi/180_r8
+      loniop(1)=(mod(scmlon-2.0_r8+360.0_r8,360.0_r8))*pi/180.0_r8
+      loniop(2)=(mod(scmlon+2.0_r8+360.0_r8,360.0_r8))*pi/180.0_r8
+   end if
 
 end subroutine dyn_init
 

@@ -36,7 +36,7 @@ module iop
   use spmd_utils,       only: masterproc
   use string_utils,     only: to_lower
   use time_manager,     only: timemgr_init, get_curr_date, get_curr_calday,&
-                              get_nstep,is_first_step,get_start_date,timemgr_time_inc
+                              get_nstep,is_first_step,get_start_date,timemgr_time_inc, is_first_restart_step
   use wrap_nf,          only: wrap_inq_dimid,wrap_get_vara_realx
 !
 ! !PUBLIC TYPES:
@@ -67,7 +67,7 @@ module iop
 !  public :: scam_use_iop_srf
 ! !PUBLIC DATA:
   public betasav, &
-         dqfx3sav, divq3dsav, divt3dsav,divu3dsav,divv3dsav,t2sav,fusav,fvsav
+       dqfx3sav, divq3dsav, divt3dsav,divu3dsav,divv3dsav,t2sav,fusav,fvsav
 
 !
 ! !REVISION HISTORY:
@@ -1021,7 +1021,7 @@ subroutine setiopupdate
    save last_date, last_sec 
 !------------------------------------------------------------------------------
 
-   if ( is_first_step() ) then
+   if ( is_first_step() .or. is_first_restart_step() ) then
 !     
 !     Open  IOP dataset
 !     
@@ -1081,7 +1081,11 @@ subroutine setiopupdate
       iopTimeIdx=0
       do i=1,ntime           ! set the first ioptimeidx
          call timemgr_time_inc(bdate, 0, next_date, next_sec, inc_s=tsec(i))
-         call get_start_date(yr,mon,day,start_tod)
+         if (is_first_restart_step()) then 
+            call get_curr_date(yr,mon,day,start_tod)
+         else
+            call get_start_date(yr,mon,day,start_tod)
+         end if
          start_ymd = yr*10000 + mon*100 + day
 
          if ( start_ymd > next_date .or. (start_ymd == next_date &

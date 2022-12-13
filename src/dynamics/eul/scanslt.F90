@@ -63,7 +63,7 @@ module scanslt
      real(r8), pointer :: qminus(:,:,:,:) => null() ! constituents on previous step
    end type advection_state
 
-   public lammp, phimp, sigmp, qfcst       ! Needed for restart
+   public lammp, phimp, sigmp, qfcst, psinitslt       ! Needed for restart
 !
    integer, public :: nlonex(platd) = huge(1) ! num longitudes per lat (extended grid)
    real(r8) :: hw1lat (pcnst,plat)           ! lat contribution to const. mass integral
@@ -72,6 +72,7 @@ module scanslt
    real(r8), allocatable, target :: phimp(:,:,:)   ! Phi midpoint coordinate
    real(r8), allocatable, target :: sigmp(:,:,:)   ! Sigma midpoint coordinate
    real(r8), allocatable, target :: qfcst(:,:,:,:) ! slt forecast of moisture and constituents
+   real(r8), allocatable, target :: psinitslt(:,:)   !scam initial ps needed for slt lagrange interpolants
 !
 ! Private data
 !
@@ -121,12 +122,15 @@ subroutine scanslt_alloc()
    allocate (phimp(plon,plev,beglat:endlat))
    allocate (sigmp(plon,plev,beglat:endlat))
    allocate (qfcst(plon,plev,pcnst,beglat:endlat))
+   allocate (psinitslt(plon,beglat:endlat))
 
    lammp (:,:,:)   = nan
    phimp (:,:,:)   = nan
    sigmp (:,:,:)   = nan
    qfcst (:,:,:,:) = nan
-end subroutine scanslt_alloc
+   psinitslt(:,:)    = nan
+
+ end subroutine scanslt_alloc
 
 !
 !-----------------------------------------------------------------------
@@ -144,7 +148,7 @@ subroutine scanslt_initial( adv_state, etamid, gravit_in, detam, cwava )
 !-----------------------------------------------------------------------
    use commap,       only: clat
    use prognostics,  only: ps, n3
-   use time_manager, only: is_first_step
+   use time_manager, only: is_first_step, is_first_restart_step
    use hycoef,       only: hyam, hybm, hyai, hybi, ps0
    use eul_control_mod, only : pdela
 !
@@ -183,7 +187,12 @@ subroutine scanslt_initial( adv_state, etamid, gravit_in, detam, cwava )
 !
    if (single_column) then
       lat = beglat
-      call plevs0(plon, plon, plev, ps(1,lat,n3), pint, pmid, pdel)
+      if (is_first_restart_step()) then
+         call plevs0(plon, plon, plev, psinitslt(1,lat), pint, pmid, pdel)
+      else
+         call plevs0(plon, plon, plev, ps(1,lat,n3), pint, pmid, pdel)
+         psinitslt(1,lat)=ps(1,lat,n3)
+      end if
       etamid(:) = pmid(lat,:)
       etaint(:) = pint(lat,:)
       if ( any(etamid == 0.0_r8) ) call endrun('etamid == 0')
