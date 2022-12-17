@@ -2046,11 +2046,19 @@ sub write_fv3core_filepath
 
     $fh->open(">$file") or die "** can't open filepath file: $file\n";
     my $camsrcdir   = $cfg_ref->get('cam_dir');
-    my $CASEROOT = "$ENV{'CASEROOT'}";
-    print $fh "$CASEROOT/SourceMods/src.cam\n";
-    print $fh "$camsrcdir/src/dynamics/fv3/microphys\n";
+
+    # User specified source directories.
+    if ($usr_src  =~ /\S+/) {
+        my @dirs = split ',', $usr_src;
+        while ( my $dir = shift @dirs ) {
+            if ($dir =~ m/cam_libfv3/) {print $fh "$dir\n";}
+        }
+    }
+    print $fh "$camsrcdir/src/dynamics/fv3/src_override\n";
+    print $fh "$camsrcdir/src/dynamics/fv3/atmos_cubed_sphere\n";
     print $fh "$camsrcdir/src/dynamics/fv3/atmos_cubed_sphere/model\n";
     print $fh "$camsrcdir/src/dynamics/fv3/atmos_cubed_sphere/tools\n";
+    print $fh "$camsrcdir/src/dynamics/fv3/atmos_cubed_sphere/GFDL_tools\n";
 
     $fh->close;
 }
@@ -2091,13 +2099,9 @@ sub write_filepath
     if ($usr_src  =~ /\S+/) {
         my @dirs = split ',', $usr_src;
         while ( my $dir = shift @dirs ) {
-            print $fh "$dir\n";
+            if ($dir !~ /cam\.lib/) {print $fh "$dir\n";}
         }
     }
-
-    # CESM has a standard source mods location.
-    my $CASEROOT = "$ENV{'CASEROOT'}";
-    print $fh "$CASEROOT/SourceMods/src.cam\n";
 
     # offline unit driver (defaults to stub)
     print $fh "$camsrcdir/src/unit_drivers\n";
@@ -2115,7 +2119,7 @@ sub write_filepath
 
     # Weak scaling fix. This has to come before physics/cam and before dycores
     # It also has to come before utils (which is already near the end).
-    if ($dyn eq 'se' or $dyn eq 'mpas') {
+    if ($dyn eq 'se' or $dyn_pkg eq 'fv3' or $dyn eq 'mpas') {
       print $fh "$camsrcdir/src/infrastructure\n";
     }
 

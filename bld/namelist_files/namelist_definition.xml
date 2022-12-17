@@ -8454,7 +8454,7 @@ Logical: whether to enable Angular momentum fixer.
 Default: FALSE
 </entry>
 
-<entry id="fv3_consv_te" type="integer" category="dyn_fv3"
+<entry id="fv3_consv_te" type="real" category="dyn_fv3"
        group="fv_core_nml" valid_values="" >
 Real: fraction of total energy lost during the adiabatic integration
 between calls of the physics, to be added back globally as heat;
@@ -8584,6 +8584,13 @@ Requires fv3_nord &gt; 0. Note that the scaling for fv3_d4_bg differs from that
 of fv3_d2_bg; fv3_nord ge 1 and fv3_d4_bg = 0.16 will be less diffusive than
 fv3_nord = 0 and fv3_d2_bg = 0.02.
 Default: 0.15
+</entry>
+
+<entry id="fv3_external_eta" type="logical" category="dyn_fv3"
+       group="fv_core_nml" valid_values="" >
+Logical:  read vertical level coefficients (ak, bk) instead of 
+hard-coded values
+Default: TRUE
 </entry>
 
 <entry id="fv3_fill" type="logical" category="dyn_fv3"
@@ -8869,6 +8876,15 @@ Default: 9
 Integer: number of vertical remappings per dt_atmos (physics
 time step).
 Default: 2
+</entry>
+
+<entry id="fv3_q_split" type="integer" category="dyn_fv3"
+       group="fv_core_nml" valid_values="" >
+Integer: number of time steps for sub-cycled tracer advection. 
+0 by default (recommended), in which case the model determines 
+the number of time steps from the global maximum wind speed at 
+each call to the tracer advection. 
+Default: 0
 </entry>
 
 <entry id="fv3_layout" type="integer(2)" category="dyn_fv3"
