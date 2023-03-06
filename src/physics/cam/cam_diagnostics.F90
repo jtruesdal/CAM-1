@@ -268,6 +268,7 @@ contains
 
     call addfld ('ZZ',         (/ 'lev' /), 'A', 'm2',        'Eddy height variance' )
     call addfld ('VZ',         (/ 'lev' /), 'A', 'm2/s',      'Meridional transport of geopotential height')
+    call addfld ('UT',         (/ 'lev' /), 'A', 'K m/s   ',  'Zonal heat transport')
     call addfld ('VT',         (/ 'lev' /), 'A', 'K m/s   ',  'Meridional heat transport')
     call addfld ('VU',         (/ 'lev' /), 'A', 'm2/s2',     'Meridional flux of zonal momentum' )
     call addfld ('VV',         (/ 'lev' /), 'A', 'm2/s2',     'Meridional velocity squared' )
@@ -284,6 +285,7 @@ contains
     call addfld ('OMEGAU',     (/ 'lev' /), 'A', 'm Pa/s2 ',  'Vertical flux of zonal momentum' )
     call addfld ('OMEGA850',   horiz_only,  'A', 'Pa/s',      'Vertical velocity at 850 mbar pressure surface')
     call addfld ('OMEGA500',   horiz_only,  'A', 'Pa/s',      'Vertical velocity at 500 mbar pressure surface')
+    call addfld ('OMEGA250',   horiz_only,  'A', 'Pa/s',      'Vertical velocity at 500 mbar pressure surface')
 
     call addfld ('PSL',        horiz_only,  'A', 'Pa','Sea level pressure')
 
@@ -294,6 +296,7 @@ contains
     call addfld ('T500',       horiz_only,  'A', 'K','Temperature at 500 mbar pressure surface')
     call addfld ('T400',       horiz_only,  'A', 'K','Temperature at 400 mbar pressure surface')
     call addfld ('T300',       horiz_only,  'A', 'K','Temperature at 300 mbar pressure surface')
+    call addfld ('T250',       horiz_only,  'A', 'K','Temperature at 200 mbar pressure surface')
     call addfld ('T200',       horiz_only,  'A', 'K','Temperature at 200 mbar pressure surface')
     call addfld ('T010',       horiz_only,  'A', 'K','Temperature at 10 mbar pressure surface')
 
@@ -339,6 +342,7 @@ contains
       call add_default ('V       '  , 1, ' ')
       call add_default ('Z3      '  , 1, ' ')
       call add_default ('OMEGA   '  , 1, ' ')
+      call add_default ('UT      ', 1, ' ')
       call add_default ('VT      ', 1, ' ')
       call add_default ('VU      ', 1, ' ')
       call add_default ('VV      ', 1, ' ')
@@ -451,6 +455,7 @@ contains
 
     ! outfld calls in diag_phys_writeout
     call addfld ('OMEGAQ',     (/ 'lev' /), 'A', 'kgPa/kgs', 'Vertical water transport' )
+    call addfld ('UQ',         (/ 'lev' /), 'A', 'm/skg/kg',  'Zonal water transport')
     call addfld ('VQ',         (/ 'lev' /), 'A', 'm/skg/kg',  'Meridional water transport')
     call addfld ('QQ',         (/ 'lev' /), 'A', 'kg2/kg2',   'Eddy moisture variance')
 
@@ -467,6 +472,7 @@ contains
     call addfld ('Q1000',      horiz_only,  'A', 'kg/kg','Specific Humidity at 1000 mbar pressure surface')
     call addfld ('Q925',       horiz_only,  'A', 'kg/kg','Specific Humidity at 925 mbar pressure surface')
     call addfld ('Q850',       horiz_only,  'A', 'kg/kg','Specific Humidity at 850 mbar pressure surface')
+    call addfld ('Q250',       horiz_only,  'A', 'kg/kg','Specific Humidity at 200 mbar pressure surface')
     call addfld ('Q200',       horiz_only,  'A', 'kg/kg','Specific Humidity at 200 mbar pressure surface')
     call addfld ('QBOT',       horiz_only,  'A', 'kg/kg','Lowest model level water vapor mixing ratio')
 
@@ -1046,6 +1052,12 @@ contains
     !
     ! Meridional advection fields
     !
+    ftem(:ncol,:) = state%u(:ncol,:)*state%t(:ncol,:)
+    call outfld ('UT      ',ftem    ,pcols   ,lchnk     )
+
+    ftem(:ncol,:) = state%q(:ncol,:,1)*state%t(:ncol,:)
+    call outfld ('UQ      ',ftem    ,pcols   ,lchnk     )
+
     ftem(:ncol,:) = state%v(:ncol,:)*state%t(:ncol,:)
     call outfld ('VT      ',ftem    ,pcols   ,lchnk     )
 
@@ -1098,6 +1110,11 @@ contains
       call outfld('OMEGA500', p_surf, pcols, lchnk)
     end if
 
+    if (hist_fld_active('OMEGA250')) then
+      call vertinterp(ncol, pcols, pver, state%pmid, 25000._r8, state%omega, p_surf)
+      call outfld('OMEGA250', p_surf, pcols, lchnk)
+    end if
+
     ! Sea level pressure
     call pbuf_get_field(pbuf, psl_idx, psl)
     call cpslec(ncol, state%pmid, state%phis, state%ps, state%t, psl, gravit, rair)
@@ -1123,6 +1140,10 @@ contains
     if (hist_fld_active('T300')) then
       call vertinterp(ncol, pcols, pver, state%pmid, 30000._r8, state%t, p_surf)
       call outfld('T300    ', p_surf, pcols, lchnk )
+    end if
+    if (hist_fld_active('T250')) then
+      call vertinterp(ncol, pcols, pver, state%pmid, 25000._r8, state%t, p_surf)
+      call outfld('T250    ', p_surf, pcols, lchnk )
     end if
     if (hist_fld_active('T200')) then
       call vertinterp(ncol, pcols, pver, state%pmid, 20000._r8, state%t, p_surf)
@@ -1400,6 +1421,10 @@ contains
     if (hist_fld_active('Q850')) then
       call vertinterp(ncol, pcols, pver, state%pmid, 85000._r8, state%q(1,1,1), p_surf)
       call outfld('Q850    ', p_surf, pcols, lchnk )
+    end if
+    if (hist_fld_active('Q250')) then
+      call vertinterp(ncol, pcols, pver, state%pmid, 25000._r8, state%q(1,1,1), p_surf)
+      call outfld('Q250    ', p_surf, pcols, lchnk )
     end if
     if (hist_fld_active('Q200')) then
       call vertinterp(ncol, pcols, pver, state%pmid, 20000._r8, state%q(1,1,1), p_surf)
