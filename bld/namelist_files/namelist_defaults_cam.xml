@@ -340,12 +340,12 @@
 <scale_dry_air_mass                                                                >      0.0D0 </scale_dry_air_mass>
 <scale_dry_air_mass aquaplanet="1"                                                 > 101080.0D0 </scale_dry_air_mass>
 <!-- Scale Dry Air Mass: for cases with topography -->
-<scale_dry_air_mass phys="cam4"                                                    >  98288.0D0 </scale_dry_air_mass>
-<scale_dry_air_mass phys="cam5"                                                    >  98288.0D0 </scale_dry_air_mass>
-<scale_dry_air_mass phys="cam6"                                                    >  98288.0D0 </scale_dry_air_mass>
-<scale_dry_air_mass phys="cam_dev"                                                 >  98288.0D0 </scale_dry_air_mass>
-<scale_dry_air_mass phys="spcam_m2005"                                             >  98288.0D0 </scale_dry_air_mass>
-<scale_dry_air_mass phys="spcam_sam1mom"                                           >  98288.0D0 </scale_dry_air_mass>
+<scale_dry_air_mass phys="cam4"                       scam="0"                     >  98288.0D0 </scale_dry_air_mass>
+<scale_dry_air_mass phys="cam5"                       scam="0"                     >  98288.0D0 </scale_dry_air_mass>
+<scale_dry_air_mass phys="cam6"                       scam="0"                     >  98288.0D0 </scale_dry_air_mass>
+<scale_dry_air_mass phys="cam_dev"                    scam="0"                     >  98288.0D0 </scale_dry_air_mass>
+<scale_dry_air_mass phys="spcam_m2005"                scam="0"                     >  98288.0D0 </scale_dry_air_mass>
+<scale_dry_air_mass phys="spcam_sam1mom"              scam="0"                     >  98288.0D0 </scale_dry_air_mass>
 
 <!-- Ridge parameterization (gamma) -->
 <bnd_rdggm hgrid="0.9x1.25">atm/cam/topo/fv_0.9x1.25_nc3000_Nsw006_Nrs002_Co008_Fi001_ZR_c160505.nc</bnd_rdggm>
@@ -2860,16 +2860,98 @@
 
 
 <!-- default namelist for SCAM mode -->
-<ncdata  dyn="eul"  hgrid="64x128"    nlev="30"   scam="1"  >atm/cam/inic/gaus/cami_0000-09-01_64x128_L30_c031210.nc</ncdata>
-<iopfile                                          scam="1"  >atm/cam/scam/iop/ARM97_4scam.nc</iopfile>
-<mfilt                                            scam="1"  >   1500     </mfilt>
-<nhtfrq                                           scam="1"  >   9        </nhtfrq>
-<scm_use_obs_uv                                   scam="1"  >   .true.   </scm_use_obs_uv>
-<scale_dry_air_mass                               scam="1"  >   0.0D0    </scale_dry_air_mass>
-<scm_zadv_q  dyn="eul"                            scam="1"  >   slt      </scm_zadv_q>
-<!-- default namelist for SE SCAM mode -->
-<ncdata  dyn="se1"   hgrid="ne3np4"                scam="1"  >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-06-01-00000.nc</ncdata>
-<ncdata  dyn="se"   hgrid="ne3np4"                scam="1"  >allsame</ncdata>
+<nhtfrq                          scam="1"                   > 1         </nhtfrq>
+<mfilt                           scam="1"                   > 10000     </mfilt>
+<scm_use_obs_uv                  scam="1"                   > .true.    </scm_use_obs_uv>
+<scale_dry_air_mass              scam="1"                   > 0.0D0     </scale_dry_air_mass>
+<scm_relaxation                  scam="1"                   > .true.    </scm_relaxation>
+<scm_relax_fincl                 scam="1"  >
+  'T', 'bc_a1', 'bc_a4', 'dst_a1', 'dst_a2', 'dst_a3', 'ncl_a1', 'ncl_a2', 'ncl_a3',
+  'num_a1', 'num_a2', 'num_a3', 'num_a4', 'pom_a1', 'pom_a4', 'so4_a1', 'so4_a2', 'so4_a3', 'soa_a1', 'soa_a2'
+</scm_relax_fincl>
+<scm_relax_bot_p                 scam="1"                  > 105000.D0  </scm_relax_bot_p>
+<scm_relax_top_p                 scam="1"                  > 200.D0     </scm_relax_top_p>
+<scm_relax_linear                scam="1"                  > .true.     </scm_relax_linear>
+<scm_relax_tau_bot_sec           scam="1"                  > 864000.D0  </scm_relax_tau_bot_sec>
+<scm_relax_tau_top_sec           scam="1"                  > 172800.D0  </scm_relax_tau_top_sec>
+
+
+<!-- iop spefic defaults for SCAM mode -->
+<ncdata  dyn="se1"  hgrid="ne3np4"           scam="1" scam_iop="arm95"     >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-07-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="arm95"     >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-07-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="arm95"     >atm/cam/scam/iop/ARM95_4scam.nc</iopfile>
+<co2vmr                                      scam="1" scam_iop="arm95"     > 368.9e-6  </co2vmr>
+
+<ncdata  dyn="se1"  hgrid="ne3np4"           scam="1" scam_iop="arm97"     >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-06-01-00000.nc</ncdata>
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="arm97"     >allsame.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="arm97"     >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-06-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="arm97"     >atm/cam/scam/iop/ARM97_4scam.nc</iopfile>
+<co2vmr                                      scam="1" scam_iop="arm97"     > 368.9e-6  </co2vmr>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="atex"      >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-02-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="atex"      >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-02-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="atex"      >atm/cam/scam/iop/ATEX_48hr_4scam.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="bomex"     >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-06-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="bomex"     >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-06-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="bomex"     >atm/cam/scam/iop/BOMEX_5day_4scam.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="cgilsS11"  >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-07-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="cgilsS11"  >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-07-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="cgilsS11"  >atm/cam/scam/iop/S11_CTL_MixedLayerInit_reduced.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="cgilsS12"  >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-07-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="cgilsS12"  >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-07-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="cgilsS12"  >atm/cam/scam/iop/S12_CTL_MixedLayerInit_reduced.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="cgilsS6"   >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-07-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="cgilsS6"   >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-07-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="cgilsS6"   >atm/cam/scam/iop/S6_CTL_reduced.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="dycomsRF01">atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-07-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="dycomsRF01">atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-07-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="dycomsRF01">atm/cam/scam/iop/DYCOMSrf01_4day_4scam.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="dycomsRF02">atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-07-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="dycomsRF02">atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-07-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="dycomsRF02">atm/cam/scam/iop/DYCOMSrf02_48hr_4scam.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="gateiii"   >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-08-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="gateiii"   >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-08-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="gateiii"   >atm/cam/scam/iop/GATEIII_4scam_c170809.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="micre2017" >atm/cam/scam/iop/micre2017_3mo.cam.i.2017-01-01-00000.regrid.ne3np4.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="micre2017" >atm/cam/scam/iop/micre2017_3mo.cam.i.2017-01-01-00000.regrid.Gaus_64x128.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="micre2017" >atm/cam/scam/iop/micre2017_3mo.macquarie2017.iop.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="mpace"     >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-10-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="mpace"     >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-10-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="mpace"     >atm/cam/scam/iop/MPACE_4scam.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="rico"      >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-07-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="rico"      >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-07-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="rico"      >atm/cam/scam/iop/RICO_3day_4scam.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="SAS"       >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-06-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="SAS"       >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-06-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="SAS"       >atm/cam/scam/iop/SAS_ideal_4scam.nc</iopfile>
+<co2vmr                                      scam="1" scam_iop="SAS"       > 368.9e-6  </co2vmr>
+<use_gw_front                                scam="1" scam_iop="SAS"       > .false.   </use_gw_front>
+<scm_backfill_iop_w_init                     scam="1" scam_iop="SAS"       > .true.    </scm_backfill_iop_w_init>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="sparticus" >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-04-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="sparticus" >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-04-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="sparticus" >atm/cam/scam/iop/SPARTICUS_4scam.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="togaII" >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-12-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="togaII" >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-12-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="togaII" >atm/cam/scam/iop/TOGAII_4scam.nc</iopfile>
+
+<ncdata  dyn="se"   hgrid="ne3np4"           scam="1" scam_iop="twp06" >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-01-01-00000.nc</ncdata>
+<ncdata  dyn="eul"  hgrid="64x128" nlev="30" scam="1" scam_iop="twp06" >atm/cam/scam/iop/CESM2.F2000climo.IOP_SITES.cam.i.0003-01-01-00000.nc</ncdata>
+<iopfile                                     scam="1" scam_iop="twp06" >atm/cam/scam/iop/TWP06_4scam.nc</iopfile>
+<iradlw                                      scam="1" scam_iop="twp06" > 1  </iradlw>
+<iradsw                                      scam="1" scam_iop="twp06" > 1  </iradsw>
 
 <!-- Eulerian spectral dycore parameters -->
 
