@@ -150,7 +150,7 @@ Modifications that allow perturbation growth testing: 0=off, 1=on.
 Configure CAM for single column mode and specify an IOP.
 This option only supported for the Eulerian and SE dycores.
 </entry>
-<entry id="scam_iop" valid_values="arm95,arm97,atex,bomex,cgilss11,cgilss12,cgilss6,dycomsrf01,dycomsrf02,gateiii,mpace,rico,sas,sparticus,togaii,twp06" value="arm97">
+<entry id="scam_iop" valid_values="arm95,arm97,atex,bomex,cgilss11,cgilss12,cgilss6,dycomsrf01,dycomsrf02,gateiii,mpace,rico,sas,sparticus,togaii,twp06,camfrc,none" value="none">
 Single column IOP
 Supported for Eulerian and SE dycores.
 </entry>

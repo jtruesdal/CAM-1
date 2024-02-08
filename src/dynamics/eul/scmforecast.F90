@@ -472,10 +472,11 @@ contains
      enddo
   endif
 
-  !Fill out tobs/qobs with background CAM state above IOP top before t3/q3 update below
-  tobs(1:ioptop-1)=t3(1:ioptop-1)
-  qobs(1:ioptop-1)=q3(1:ioptop-1,1)
-
+  !If not using camiop then fillt tobs/qobs with background CAM state above IOP top before t3/q3 update below
+   if( .not. use_camiop ) then
+      tobs(1:ioptop-1)=t3(1:ioptop-1)
+      qobs(1:ioptop-1)=q3(1:ioptop-1,1)
+   end if
   ! ------------------------------------------------------------------- !
   ! Relaxation to the observed or specified state                       !
   ! We should specify relaxation time scale ( rtau ) and                !

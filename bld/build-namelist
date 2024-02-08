@@ -3927,9 +3927,6 @@ if ($cfg->get('scam')) {
         add_default($nl, 'iradsw');
         add_default($nl, 'iradlw');
     }
-    if ($scam_iop eq 'user') {
-    }
-
 }
 
 # CAM generates IOP file for SCAM

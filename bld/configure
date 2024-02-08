@@ -126,7 +126,7 @@ OPTIONS
                         This switch only works with the Eulerian dycore.
      -scam <iopname>    Compiles model in single column mode and configures for iop
                         [ arm95 | arm97 | atex | bomex | cgilsS11 | cgilsS12 | cgilsS6 | dycomsRF01 |
-                          dycomsRF02 | gateIII | mpace | rico | sparticus | togaII | twp06 | SAS | user ].
+                          dycomsRF02 | gateIII | mpace | rico | sparticus | togaII | twp06 | SAS | camfrc ].
                         Default: arm97
 
   CAM parallelization:
@@ -1190,7 +1190,7 @@ if ($print>=2) { print "Perturbation growth testing: $pergro$eol"; }
 # Single column mode
 
 # Set default iop
-my $scam_iop = 'arm97';
+my $scam_iop;
 
 # Allow the user to override the default via the commandline.
 if (defined $opts{'scam'}) {

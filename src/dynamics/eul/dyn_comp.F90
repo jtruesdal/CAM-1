@@ -11,7 +11,7 @@ use spmd_utils,      only: masterproc, npes, mpicom, mpir8
 
 use physconst,       only: pi
 use pmgrid,          only: plon, plat, plev, plevp, plnlv, beglat, endlat
-use commap,          only: clat, clon
+use commap,          only: clat, clon, latdeg
 use dyn_grid,        only: ptimelevels
 
 
@@ -523,6 +523,7 @@ subroutine read_inidat()
    deallocate ( phis_tmp )
 
    if (single_column) then
+      call setiopupdate_init()
       if ( scm_cambfb_mode ) then
 
          fieldname = 'CLAT1'
@@ -531,8 +532,9 @@ subroutine read_inidat()
          if (.not. readvar) then
             call endrun('CLAT not on iop initial file')
          else
-            clat(:) = clat2d(1,:)
-            clat_p(:)=clat(:)
+            clat = clat2d(1,1)
+            clat_p(:)=clat2d(1,1)
+            latdeg(1) = clat(1)*45._r8/atan(1._r8)
          end if
 
          fieldname = 'CLON1'
@@ -575,7 +577,6 @@ subroutine read_inidat()
          latiop(2)=(scmlat+2._r8)*pi/180_r8
          loniop(1)=(mod(scmlon-2.0_r8+360.0_r8,360.0_r8))*pi/180.0_r8
          loniop(2)=(mod(scmlon+2.0_r8+360.0_r8,360.0_r8))*pi/180.0_r8
-         call setiopupdate_init()
          call setiopupdate()
          call readiopdata(hvcoord)
          call iop_update_prognostics(1,t3=t3,u3=u3,v3=v3,q3=q3,ps=ps)

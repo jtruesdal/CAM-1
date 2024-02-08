@@ -192,8 +192,8 @@ subroutine apply_SC_forcing(elem,hvcoord,tl,n,t_before_advance)
     ! Nudge to observations if desired, for T & Q only if in SCM mode
     if (iop_nudge_tq ) then
        call advance_iop_nudging(dt,elem(ie_scm)%state%psdry(i_scm,j_scm),& ! In
-            t_update,q_update(:,1), hvcoord, &                   ! Inn
-            t_update,q_update(:,1),relaxt,relaxq)                ! Out
+            t_update,q_update,u_update,v_update, hvcoord, &                ! Inout
+            relaxt,relaxq)                                                 ! Out
     endif
 
     if (use_3dfrc) then    ! vertical remap of dynamics not run need to update state%dp3d using new psdry
