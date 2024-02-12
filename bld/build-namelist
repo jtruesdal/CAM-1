@@ -3192,7 +3192,7 @@ if ($cfg->get('microphys') =~ /^mg/) {
         my $abs_path = quote_string(set_abs_filepath($rel_path, $cam_dir));
         #overwrite the relative pathname with the absolute pathname
         $nl->set_variable_value('pumas_stochastic_tau_nl', 'pumas_stochastic_tau_kernel_filename', $abs_path);
-      
+
     }else {
     # For CESM2, the decision was made to set micro_do_sb_physics to false
     # This variable is replaced with micro_mg_warm_rain in cam_dev runs
@@ -4009,13 +4009,14 @@ if ($cfg->get('scam')) {
     add_default($nl, 'scm_use_obs_uv');
     add_default($nl, 'scale_dry_air_mass');
     add_default($nl, 'scm_relaxation');
-    add_default($nl, 'scm_relax_fincl');
     add_default($nl, 'scm_relax_bot_p');
     add_default($nl, 'scm_relax_top_p');
     add_default($nl, 'scm_relax_linear');
     add_default($nl, 'scm_relax_tau_bot_sec');
     add_default($nl, 'scm_relax_tau_top_sec');
-
+    if ($chem =~ /_mam/) {
+	add_default($nl, 'scm_relax_fincl');
+    }
     if ($cfg->get('scam_iop')) {
 	add_default($nl, 'iopfile');
     }

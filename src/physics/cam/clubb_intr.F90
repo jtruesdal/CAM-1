@@ -4074,13 +4074,7 @@ end subroutine clubb_init_cnst
         concld(i,k) = min(cloud_frac(i,k)-alst(i,k)+deepcu(i,k),0.80_r8)
       enddo
     enddo
-<<<<<<< HEAD
-
     if (single_column .and. .not. scm_cambfb_mode) then
-=======
-
-    if (single_column) then
->>>>>>> cam_development
       if (trim(scm_clubb_iop_name)  ==  'ATEX_48hr'       .or. &
           trim(scm_clubb_iop_name)  ==  'BOMEX_5day'      .or. &
           trim(scm_clubb_iop_name)  ==  'DYCOMSrf01_4day' .or. &
