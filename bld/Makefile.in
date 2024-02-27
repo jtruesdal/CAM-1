@@ -8,7 +8,7 @@
 #               VPATH variable which is used by GNU make to search for
 #               dependencies (after it looks in the directory from which
 #               it was invoked).  This list of directories, prepended with ./,
-#               is also used to construct the list of search directories 
+#               is also used to construct the list of search directories
 #               used by the preprocessor (as specified by -I command-line options).
 #
 # The following macros are set by CAM's configure script.  They should only be hand edited
@@ -27,9 +27,9 @@
 # MPI_LIB_NAME  Name of MPI library.
 # LAPACK_LIBDIR Directory containing the LAPACK library.
 # ESMF_LIBDIR   Directory containing the ESMF library (for use with external library only).
-# DEBUG         Set to TRUE to turn on compiler debugging options.  Default: FALSE 
+# DEBUG         Set to TRUE to turn on compiler debugging options.  Default: FALSE
 # SPMD          Whether to build in SPMD mode or not. 	[values TRUE FALSE]
-# SMP           Set to TRUE to enable building in SMP mode (uses OpenMP).  
+# SMP           Set to TRUE to enable building in SMP mode (uses OpenMP).
 # FC            Fortran compiler
 # FC_TYPE       Type of Fortran compiler invoked by generic wrapper script such as mpif90.
 # CC            C compiler
@@ -81,8 +81,8 @@ cpp_dirs := $(dirs) $(INC_NETCDF) $(INC_MPI) $(INC_PNETCDF) $(PIO_INC)
 cpp_path := $(foreach dir,$(cpp_dirs),-I$(dir)) # format for command line
 
 # Expand any tildes in directory names. Change spaces to colons.
-VPATH    := $(foreach dir,$(cpp_dirs),$(wildcard $(dir))) 
-VPATH    := $(subst $(space),:,$(VPATH))               
+VPATH    := $(foreach dir,$(cpp_dirs),$(wildcard $(dir)))
+VPATH    := $(subst $(space),:,$(VPATH))
 
 # Files to be excluded from build:
 # GPTL files
@@ -136,7 +136,7 @@ endif
 ifneq ($(strip $(LIB_PNETCDF)),)
   CPPDEF += -D_PNETCDF -DUSEMPIIO
   #dont use LDFLAGS here, it will be overwritten below
-  USER_LDFLAGS += -L$(LIB_PNETCDF) -lpnetcdf 
+  USER_LDFLAGS += -L$(LIB_PNETCDF) -lpnetcdf
 endif
 
 CONTIGUOUS_FLAG    := -DUSE_CONTIGUOUS=contiguous,
@@ -163,9 +163,9 @@ $(FV3CORE_LIBDIR)/libfv3core.a: cam_abortutils.o
 dyn_grid.o: $(FV3CORE_LIBDIR)/libfv3core.a
 endif
 
-# Rules to build MCT library. 
+# Rules to build MCT library.
 # SRCDIR is passed via the commandline because of a bug in the MCT configure.
-$(MCT_LIBDIR)/mct/libmct.a: 
+$(MCT_LIBDIR)/mct/libmct.a:
 	$(MAKE) -C $(MCT_LIBDIR) SRCDIR=$(ROOTDIR)/cime/src/externals/mct
 shr_kind_mod.o: $(MCT_LIBDIR)/mct/libmct.a
 perf_utils.o: $(MCT_LIBDIR)/mct/libmct.a
@@ -190,7 +190,7 @@ endif
 
 # Compilation rules:
 .SUFFIXES:
-.SUFFIXES: .F .F90 .f90 .c .s .o 
+.SUFFIXES: .F .F90 .f90 .c .s .o
 
 .F.o:
 	$(FC) -c $(FIXEDFLAGS) $(FFLAGS) $<
@@ -267,7 +267,7 @@ ifeq ($(SPMD),FALSE)
   mod_path     += -I$(MCT_LIBDIR)/mpi-serial
 endif
 ifneq ($(strip $(MOD_NETCDF)),)
-  mod_path     += -I$(MOD_NETCDF) 
+  mod_path     += -I$(MOD_NETCDF)
 endif
 ifneq ($(strip $(COSP_LIBDIR)),)
   mod_path     += -I$(COSP_LIBDIR)
@@ -366,7 +366,7 @@ ifeq ($(SPMD),FALSE)
   mod_path += -I$(MCT_LIBDIR)/mpi-serial
 endif
 ifneq ($(strip $(MOD_NETCDF)),)
-  mod_path += -I$(MOD_NETCDF) 
+  mod_path += -I$(MOD_NETCDF)
 endif
 ifneq ($(strip $(COSP_LIBDIR)),)
   mod_path += -I$(COSP_LIBDIR)
@@ -428,7 +428,7 @@ ifeq ($(FC_TYPE),intel)
                    -qno-opt-dynamic-align -assume realloc_lhs -xHost
   FC_FLAGS_O3OPT:= $(FC_FLAGS)
   FC_FLAGS_NOOPT:= -ftz -convert big_endian -O0
-  FREEFLAGS     := 
+  FREEFLAGS     :=
   FIXEDFLAGS    := -fixed -132
   LDFLAGS       :=
 
@@ -536,7 +536,7 @@ ifeq ($(FC_TYPE),gnu)
   FC_FLAGS_NOOPT:= $(FC_FLAGS) -O0
   FREEFLAGS     := -ffree-form -ffree-line-length-none
   FIXEDFLAGS    := -ffixed-form -ffixed-line-length-132
-  LDFLAGS       := 
+  LDFLAGS       :=
 
   ifeq ($(SMP),TRUE)
     FC_FLAGS       += -fopenmp
@@ -635,7 +635,7 @@ ifeq ($(FC_TYPE), nag)
 
   FREEFLAGS     := -free
   FIXEDFLAGS    := -fixed
-  LDFLAGS       := 
+  LDFLAGS       :=
 
   ifeq ($(DEBUG),TRUE)
     FC_FLAGS       += -g -time -f2003 -ieee=stop -nan
@@ -651,7 +651,7 @@ ifeq ($(FC_TYPE), nag)
       FC_FLAGS       += -gline -C=all
       FC_FLAGS_NOOPT += -gline
     else
-      FC_FLAGS       += -C=array -C=bits -C=calls -C=do -C=intovf -C=present -C=pointer 
+      FC_FLAGS       += -C=array -C=bits -C=calls -C=do -C=intovf -C=present -C=pointer
     endif
 
   else
@@ -705,7 +705,7 @@ ifneq ($(strip $(LAPACK_LIBDIR)),)
 endif
 
 ifeq ($(SPMD),TRUE)
-  FFLAGS += 
+  FFLAGS +=
   ifneq ($(strip $(LIB_MPI)),)
     # Some things seem broken if this comes after -lmpeu.
     # Putting this at the end of USER_LDFLAGS guarantees that that
@@ -720,7 +720,7 @@ endif
 
 
 #------------------------------------------------------------------------
-# Darwin 
+# Darwin
 #   PowerPC = XLF compiler (serial only, no MPI multi-tasking or OpenMP threading)
 #   Intel   = Intel Fortran Compiler
 #
@@ -733,11 +733,11 @@ ifeq ($(UNAMES),Darwin)
   # Common stuff
   #----------------------------------------------------------------------
   CPPDEF   += -DSYSDARWIN
-  
+
   ifeq ($(NESTED_OMP),TRUE)
     CPPDEF   += -DNESTED_PAR -DSYSDARWIN
   endif
-  
+
   #--------------------------------------------------------------------
   # ifort
   #--------------------------------------------------------------------
@@ -747,20 +747,20 @@ ifeq ($(UNAMES),Darwin)
     ifeq ($(ADDRESS),Q32)
       QCMP      :=
     endif
-    
+
     ifeq ($(ADDRESS),Q64)
       QCMP      := -m64
       QLDR      := -m64
     endif
-  
-    CPPDEF      += -DLINUX -DDarwin 
+
+    CPPDEF      += -DLINUX -DDarwin
     CFLAGS      := $(cpp_path) $(CPPDEF) -O2 $(QCMP) -gdwarf-2
     mod_path    := -I$(MCT_LIBDIR)/mct -I$(MCT_LIBDIR)/mpeu
     ifeq ($(SPMD),FALSE)
       mod_path  += -I$(MCT_LIBDIR)/mpi-serial
     endif
     ifneq ($(strip $(MOD_NETCDF)),)
-      mod_path  += -I$(MOD_NETCDF) 
+      mod_path  += -I$(MOD_NETCDF)
     endif
     # Needed for COSP, since it builds in its own directory.
     ifneq ($(strip $(COSP_LIBDIR)),)
@@ -786,10 +786,10 @@ ifeq ($(UNAMES),Darwin)
     ifeq ($(SMP),TRUE)
       FFLAGS += -qopenmp
       LDFLAGS += -qopenmp
-    endif  
+    endif
 
     ifeq ($(SPMD),TRUE)
-      # Works with MPICH2-1.1.1p1       
+      # Works with MPICH2-1.1.1p1
 #      LDFLAGS += -L$(LIB_MPI) -l$(MPI_LIB_NAME)f90 -lp$(MPI_LIB_NAME) -l$(MPI_LIB_NAME)
 
       # Updated for MPICH2-1.4.1p1, which has an extra library.
@@ -804,26 +804,26 @@ ifeq ($(UNAMES),Darwin)
 
 #      FFLAGS += -fp-stack-check -check bounds -check pointers -check uninit -O0 -fpe0 -debug -ftrapuv
       FFLAGS += -fp-stack-check -check bounds -check uninit -O0 -fpe0 -ftrapuv
-      
+
       # To work with idb on Lion ...
       LDFLAGS += -no_pie
-      
+
       FFLAGS_NOOPT := $(FFLAGS)
     else
       # Check for override of default Fortran compiler optimizations
       ifeq ($(F_OPTIMIZATION_OVERRIDE),$(null))
         FORTRAN_OPTIMIZATION := -O2
       endif
-      
+
       FFLAGS_NOOPT := $(FFLAGS) -O0
       FFLAGS += $(FORTRAN_OPTIMIZATION)
 
       FFLAGS_NOCHK = $(FFLAGS)
     endif
-    
+
     # For OSX 10.7 to stop address-space layout randomization (ASLR)
     LDFLAGS += -no_pie
-  
+
   endif
 
   #--------------------------------------------------------------------
@@ -839,7 +839,7 @@ ifeq ($(UNAMES),Darwin)
       mod_path += -I$(MCT_LIBDIR)/mpi-serial
     endif
     ifneq ($(strip $(MOD_NETCDF)),)
-      mod_path += -I$(MOD_NETCDF) 
+      mod_path += -I$(MOD_NETCDF)
     endif
     # Needed for COSP, since it builds in its own directory.
     ifneq ($(strip $(COSP_LIBDIR)),)
@@ -854,10 +854,10 @@ ifeq ($(UNAMES),Darwin)
     # COSP, FV3 and FMS needs to autopromote to get its precision to match CAM
     FC_AUTO_R8   := -qrealsize=8
 
-    FFLAGS     := $(cpp_path) $(mod_path) $(FPPFLAGS) -qspillsize=2500 
+    FFLAGS     := $(cpp_path) $(mod_path) $(FPPFLAGS) -qspillsize=2500
     FREEFLAGS  := -qsuffix=f=f90:cpp=F90
     FIXEDFLAGS := -qfixed=132
-    
+
     ifeq ($(SPMD),TRUE)
       LDFLAGS += -L$(LIB_MPI) -l$(MPI_LIB_NAME)f90 -lp$(MPI_LIB_NAME) -l$(MPI_LIB_NAME)
     else
@@ -875,14 +875,14 @@ ifeq ($(UNAMES),Darwin)
         FFLAGS += -qsmp=omp:noopt
         LDFLAGS += -qsmp=omp:noopt
       endif
-      
+
       FFLAGS_NOOPT := $(FFLAGS)
     else
       # Check for override of default Fortran compiler optimizations
       ifeq ($(F_OPTIMIZATION_OVERRIDE),$(null))
         FORTRAN_OPTIMIZATION := -O3 -qstrict
       endif
-      
+
       FFLAGS_NOOPT := $(FFLAGS) -O0
       FFLAGS += $(FORTRAN_OPTIMIZATION)
 
@@ -894,8 +894,8 @@ ifeq ($(UNAMES),Darwin)
         LDFLAGS += -qsmp=omp
       endif
     endif
-  endif  
-  
+  endif
+
   #----------------------------------------------------------------------
   # Common stuff
   #----------------------------------------------------------------------
@@ -952,7 +952,7 @@ ifeq ($(SPMD),FALSE)
   mod_path   += -I$(MCT_LIBDIR)/mpi-serial
 endif
 ifneq ($(strip $(MOD_NETCDF)),)
-  mod_path   += -I$(MOD_NETCDF) 
+  mod_path   += -I$(MOD_NETCDF)
 endif
 
 FC_FLAGS       := -g -qfullpath -qmaxmem=-1 -qspillsize=2500 -qextname=flush
@@ -1035,12 +1035,12 @@ ifeq ($(SPMD),FALSE)
   mod_path += -I$(MCT_LIBDIR)/mpi-serial
 endif
 ifneq ($(strip $(MOD_NETCDF)),)
-  mod_path += -I$(MOD_NETCDF) 
+  mod_path += -I$(MOD_NETCDF)
 endif
 
 FFLAGS     := -I$(BGLPATH)/include \
                $(cpp_path) $(mod_path) $(FPPFLAGS) -qarch=440 \
-		-qspillsize=2500 -g -qfullpath 
+		-qspillsize=2500 -g -qfullpath
 FREEFLAGS  := -qsuffix=f=f90:cpp=F90
 FIXEDFLAGS := -qfixed=132
 LDFLAGS    := -L$(BGLPATH)/lib -lmpich.rts -lmsglayer.rts \
@@ -1088,11 +1088,11 @@ ifeq ($(SPMD),FALSE)
   mod_path   += -I$(MCT_LIBDIR)/mpi-serial
 endif
 ifneq ($(strip $(MOD_NETCDF)),)
-  mod_path   += -I$(MOD_NETCDF) 
+  mod_path   += -I$(MOD_NETCDF)
 endif
 
 FFLAGS       := $(cpp_path) $(mod_path) $(FPPFLAGS) \
-		-qspillsize=2500 -g -qfullpath 
+		-qspillsize=2500 -g -qfullpath
 FFLAGS_NOOPT := $(FFLAGS)
 FREEFLAGS    := -qsuffix=f=f90:cpp=F90
 FIXEDFLAGS   := -qfixed=132
