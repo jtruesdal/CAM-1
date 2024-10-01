@@ -730,7 +730,7 @@ contains
     use convect_deep,       only: convect_deep_init
     use convect_diagnostics,only: convect_diagnostics_init
     use cam_diagnostics,    only: diag_init
-    use gw_drag,            only: gw_init
+    use gw_drag_cam,        only: gw_drag_cam_init
     use radheat,            only: radheat_init
     use radiation,          only: radiation_init
     use cloud_diagnostics,  only: cloud_diagnostics_init
@@ -1354,7 +1354,7 @@ contains
     use physics_buffer, only: physics_buffer_desc, pbuf_set_field, pbuf_get_index, pbuf_get_field, pbuf_old_tim_idx
     use chemistry,          only: chem_is_active, chem_timestep_tend, chem_emissions
     use cam_diagnostics,    only: diag_phys_tend_writeout
-    use gw_drag,            only: gw_tend
+    use gw_drag_cam,        only: gw_drag_cam_tend
     use vertical_diffusion, only: vertical_diffusion_tend
     use rayleigh_friction,  only: rayleigh_friction_tend
     use physics_types,      only: physics_dme_adjust, set_dry_to_wet, physics_state_check,       &

@@ -742,7 +742,7 @@ contains
     use convect_deep,       only: convect_deep_init
     use convect_shallow,    only: convect_shallow_init
     use cam_diagnostics,    only: diag_init
-    use gw_drag,            only: gw_init
+    use gw_drag_cam,        only: gw_drag_cam_init
     use cam3_aero_data,     only: cam3_aero_data_on, cam3_aero_data_init
     use cam3_ozone_data,    only: cam3_ozone_data_on, cam3_ozone_data_init
     use radheat,            only: radheat_init
@@ -895,7 +895,7 @@ contains
     ! CAM3 prescribed ozone
     if (cam3_ozone_data_on) call cam3_ozone_data_init(phys_state)
 
-    call gw_init()
+    call gw_drag_cam_init()
 
     call rayleigh_friction_init()
 
@@ -1395,7 +1395,7 @@ contains
     use shr_kind_mod,       only: r8 => shr_kind_r8
     use chemistry,          only: chem_is_active, chem_timestep_tend, chem_emissions
     use cam_diagnostics,    only: diag_phys_tend_writeout
-    use gw_drag,            only: gw_tend
+    use gw_drag_cam,        only: gw_drag_cam_tend
     use vertical_diffusion, only: vertical_diffusion_tend
     use rayleigh_friction,  only: rayleigh_friction_tend
     use constituents,       only: cnst_get_ind
@@ -1759,7 +1759,7 @@ contains
                     fh2o, surfric, obklen, flx_heat)
     end if
 
-    call gw_tend(state, pbuf, ztodt, ptend, cam_in, flx_heat)
+    call gw_drag_cam_tend(state, pbuf, ztodt, ptend, cam_in, flx_heat)
 
     if ( (trim(cam_take_snapshot_after) == "gw_tend") .and.                   &
          (trim(cam_take_snapshot_before) == trim(cam_take_snapshot_after))) then
