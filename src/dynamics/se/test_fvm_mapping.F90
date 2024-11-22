@@ -1,6 +1,6 @@
 module test_fvm_mapping
   use shr_kind_mod,           only: r8=>shr_kind_r8
-  use fvm_control_volume_mod, only: fvm_struct
+!jt  use fvm_control_volume_mod, only: fvm_struct
   use cam_history,            only: outfld
   use physconst,              only: pi
   use dimensions_mod,         only: np, nelemd, nlev, npsq, ntrac
@@ -132,14 +132,15 @@ contains
 #endif
   end subroutine test_mapping_addfld
 
-  subroutine test_mapping_overwrite_tendencies(phys_state,phys_tend,ncols,lchnk,q_prev,fvm)
+!jt  subroutine test_mapping_overwrite_tendencies(phys_state,phys_tend,ncols,lchnk,q_prev,fvm)
+  subroutine test_mapping_overwrite_tendencies(phys_state,phys_tend,ncols,lchnk,q_prev)
     use dimensions_mod,         only: fv_nphys
     use constituents,           only: cnst_get_ind,pcnst,cnst_name
     use physics_types,  only: physics_state, physics_tend
     type(physics_state), intent(inout) :: phys_state
     type(physics_tend),  intent(inout) :: phys_tend
     real(r8), dimension(:,:,:), intent(inout) :: q_prev
-    type(fvm_struct), intent(inout):: fvm(:)
+!jt    type(fvm_struct), intent(inout):: fvm(:)
     integer,          intent(in)   :: ncols,lchnk
 #ifdef debug_coupling
     integer :: icol,k
@@ -150,7 +151,7 @@ contains
     do ie=1,nelemd
 !xxx      fvm(ie)%c(:,:,:,ntrac) = 0.0_r8
     end do
-    
+
     phys_state%pdel(1:ncols,:) = phys_state%pdeldry(1:ncols,:) !make sure there is no conversion from wet to dry
     do nq=ntrac,ntrac
       m_cnst = nq
@@ -190,11 +191,12 @@ contains
 #endif
   end subroutine test_mapping_overwrite_tendencies
 
-  subroutine test_mapping_output_mapped_tendencies(fvm,elem,nets,nete,tl_f,tl_qdp)
+!jt  subroutine test_mapping_output_mapped_tendencies(fvm,elem,nets,nete,tl_f,tl_qdp)
+  subroutine test_mapping_output_mapped_tendencies(elem,nets,nete,tl_f,tl_qdp)
     use dimensions_mod,         only: fv_nphys,nlev,nc
     use constituents,           only: cnst_get_ind,cnst_name
     integer,          intent(in)   :: nets,nete,tl_f,tl_qdp
-    type(fvm_struct), intent(inout):: fvm(nets:nete)
+!jt    type(fvm_struct), intent(inout):: fvm(nets:nete)
     type(element_t),  intent(inout):: elem(nets:nete)             ! pointer to dyn_out element array
 #ifdef debug_coupling
     integer :: ie,i,j,k
@@ -253,17 +255,17 @@ contains
 !          k=num_tracer+1
 !          fvm(ie)%fc(1:nc,1:nc,k,:) = fvm(ie)%fc(1:nc,1:nc,cl_idx,:)+&
 !                                    2.0_r8*fvm(ie)%fc(1:nc,1:nc,cl2_idx,:)
-          call outfld(trim(name),&
-               RESHAPE(fvm(ie)%fc(1:nc,1:nc,:,m_cnst)/fvm(ie)%dp_fvm(1:nc,1:nc,:),&
-               (/nc*nc,nlev/)),nc*nc,ie)
-          do k=1,num_fnc
-            do j=1,nc
-              do i=1,nc
-                diff(i,j,k,m_cnst) = fvm(ie)%fc(i,j,k,m_cnst)/fvm(ie)%dp_fvm(i,j,k)-&
-                     test_func(fvm(ie)%center_cart(i,j)%lat,fvm(ie)%center_cart(i,j)%lon, k, k)
-              end do
-            end do
-          end do
+!!$          call outfld(trim(name),&
+!!$               RESHAPE(fvm(ie)%fc(1:nc,1:nc,:,m_cnst)/fvm(ie)%dp_fvm(1:nc,1:nc,:),&
+!!$               (/nc*nc,nlev/)),nc*nc,ie)
+!!$          do k=1,num_fnc
+!!$            do j=1,nc
+!!$              do i=1,nc
+!!$                diff(i,j,k,m_cnst) = fvm(ie)%fc(i,j,k,m_cnst)/fvm(ie)%dp_fvm(i,j,k)-&
+!!$                     test_func(fvm(ie)%center_cart(i,j)%lat,fvm(ie)%center_cart(i,j)%lon, k, k)
+!!$              end do
+!!$            end do
+!!$          end do
           name = 'p2f_'//trim(cnst_name(m_cnst))//'_err_fvm'
           call outfld(TRIM(name), RESHAPE(diff(:,:,:,m_cnst),(/nc*nc,nlev/)), nc*nc, ie)
 
@@ -273,16 +275,17 @@ contains
 #endif
   end subroutine test_mapping_output_mapped_tendencies
 
-  subroutine test_mapping_overwrite_dyn_state(elem,fvm)
-    use fvm_control_volume_mod, only: fvm_struct
+!jt  subroutine test_mapping_overwrite_dyn_state(elem,fvm)
+  subroutine test_mapping_overwrite_dyn_state(elem)
+!jt    use fvm_control_volume_mod, only: fvm_struct
     use constituents,           only: cnst_name
     use dimensions_mod,         only: nc,nhc
     use hybrid_mod,             only: get_loop_ranges, hybrid_t,config_thread_region
-    use control_mod,            only: north, south, east, west, neast, nwest, seast, swest    
+    use control_mod,            only: north, south, east, west, neast, nwest, seast, swest
     !    use fvm_mod,                only: fill_halo_fvm_noprealloc
-    use fvm_mod,                only: fill_halo_fvm,ghostBufQnhc_h    
+!jt    use fvm_mod,                only: fill_halo_fvm,ghostBufQnhc_h
     use parallel_mod,           only: par
-    type (fvm_struct), intent(inout)    :: fvm(:)
+!jt    type (fvm_struct), intent(inout)    :: fvm(:)
     type(element_t), intent(inout) :: elem(:)             ! pointer to dyn_out element array
 #ifdef debug_coupling
     integer            :: i,j,k,ie,nq,m_cnst
@@ -299,7 +302,7 @@ contains
         do k=1,num_fnc
           do j=1,nc
             do i=1,nc
-              fvm(ie)%c(i,j,k,m_cnst) = test_func(fvm(ie)%center_cart(i,j)%lat,fvm(ie)%center_cart(i,j)%lon, k, k)
+!jt              fvm(ie)%c(i,j,k,m_cnst) = test_func(fvm(ie)%center_cart(i,j)%lat,fvm(ie)%center_cart(i,j)%lon, k, k)
             end do
           end do
         end do
@@ -313,9 +316,9 @@ contains
 !                                 2.0_r8*test_func(fvm(ie)%center_cart(i,j)%lat,fvm(ie)%center_cart(i,j)%lon, k,cl2_idx)
 !          end do
 !        end do
-        call outfld(TRIM(name), RESHAPE(fvm(ie)%c(1:nc,1:nc,:,m_cnst),(/nc*nc,nlev/)), nc*nc, ie)
+!jt        call outfld(TRIM(name), RESHAPE(fvm(ie)%c(1:nc,1:nc,:,m_cnst),(/nc*nc,nlev/)), nc*nc, ie)
       end do
-      
+
       elem(ie)%state%Qdp(:,:,:,:,:)   = 0.0_r8 !for testing the p2d map
       do k=1,num_fnc
         do j=1,np
@@ -339,33 +342,34 @@ contains
     !
     ! do boundary exchange (this call should be indentical to call in prim_driver)
     !
-    call fill_halo_fvm(ghostBufQnhc_h,elem,fvm,hybrid,nets,nete,nhc,1,nlev,nlev)
-    do ie=nets,nete
-      if (fvm(ie)%cubeboundary>4) then
-        do k=ntrac,ntrac
-          select case(fvm(ie)%cubeboundary)
-          case (nwest)
-            fvm(ie)%c(0,nc+1,:,k) = fvm(ie)%c(1,nc+1,:,k)
-          case (swest)
-            fvm(ie)%c(0,0,:,k) = fvm(ie)%c(0,1,:,k)
-          case (seast)
-            fvm(ie)%c(nc+1,0,:,k) = fvm(ie)%c(0,nc,:,k)            
-          case (neast)
-            fvm(ie)%c(nc+1,nc+1,:,k) = fvm(ie)%c(nc,nc+1,:,k)                        
-          end select
-        end do
-      end if
-    end do
+!jt    call fill_halo_fvm(ghostBufQnhc_h,elem,fvm,hybrid,nets,nete,nhc,1,nlev,nlev)
+!jt    do ie=nets,nete
+!jt      if (fvm(ie)%cubeboundary>4) then
+!jt        do k=ntrac,ntrac
+!jt          select case(fvm(ie)%cubeboundary)
+!jt          case (nwest)
+!jt            fvm(ie)%c(0,nc+1,:,k) = fvm(ie)%c(1,nc+1,:,k)
+!jt          case (swest)
+!jt            fvm(ie)%c(0,0,:,k) = fvm(ie)%c(0,1,:,k)
+!jt          case (seast)
+!jt            fvm(ie)%c(nc+1,0,:,k) = fvm(ie)%c(0,nc,:,k)
+!jt          case (neast)
+!jt            fvm(ie)%c(nc+1,nc+1,:,k) = fvm(ie)%c(nc,nc+1,:,k)
+!jt          end select
+!jt        end do
+!jt      end if
+!jt    end do
 !    call fill_halo_fvm_noprealloc(elem,fvm,hybrid,nets,nete,nhc,1,nlev)!xxx nhr chould be a function of interp_method
 #endif
   end subroutine test_mapping_overwrite_dyn_state
 
-  subroutine test_mapping_output_phys_state(phys_state,fvm)
+!jt  subroutine test_mapping_output_phys_state(phys_state,fvm)
+  subroutine test_mapping_output_phys_state(phys_state)
     use physics_types, only: physics_state
     use ppgrid,        only: begchunk, endchunk, pver, pcols
     use constituents,  only: cnst_get_ind,cnst_name
     type(physics_state), intent(inout) :: phys_state(begchunk:endchunk)
-    type(fvm_struct), pointer:: fvm(:)
+!jt    type(fvm_struct), pointer:: fvm(:)
 #ifdef debug_coupling
     integer            :: lchnk, ncol,k,icol,m_cnst,nq,ie
     character(LEN=128) :: name
@@ -524,13 +528,13 @@ contains
       fout = 0.5_r8 * ( tanh( 3.0_r8*abs(lat)-pi ) + 1.0_r8)
     case(4)
       fout = 2.0_r8+cos(5.0_r8+40*lon)!1.0e-8_r8
-      fout = -0.5_r8-0.5_r8*(cos(16*lon)*(sin(2_r8*lat)**16))            
+      fout = -0.5_r8-0.5_r8*(cos(16*lon)*(sin(2_r8*lat)**16))
     case(5)
       !
       ! approximately Y^2_2 spherical harmonic
       !
       fout = sin(lon)*cos(40*lat)!1.0e-8_r8
-      fout = 0.5_r8*(cos(16*lon)*(sin(2_r8*lat)**16))      
+      fout = 0.5_r8*(cos(16*lon)*(sin(2_r8*lat)**16))
     case(6)
       !
       ! approximately Y32_16 spherical harmonic

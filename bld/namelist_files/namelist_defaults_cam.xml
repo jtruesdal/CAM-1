@@ -2820,11 +2820,47 @@
 
 <se_large_Courant_incr        > .true.  </se_large_Courant_incr>
 
+<se_hypervis_order            > 2 </se_hypervis_order>
+
 <se_hypervis_scaling se_refined_mesh="1" hypervis_type="tensor" >3.22D0 </se_hypervis_scaling>
+<se_hypervis_scaling hgrid="ne16np4" >3.0D0 </se_hypervis_scaling>
+<se_hypervis_scaling hgrid="ne30np4" >3.0D0 </se_hypervis_scaling>
 
 <se_hypervis_subcycle                                            > 3 </se_hypervis_subcycle>
 <se_hypervis_subcycle  waccm_phys="1"                            > 2 </se_hypervis_subcycle>
-<se_hypervis_subcycle  hgrid="ne16np4"                           > 4 </se_hypervis_subcycle>
+<se_hypervis_subcycle  se_dyn_target="theta-l"      > 1 </se_hypervis_subcycle>
+<se_hypervis_subcycle_q  se_dyn_target="theta-l"    > 6 </se_hypervis_subcycle_q>
+<se_hypervis_subcycle_tom  se_dyn_target="theta-l"  > 1 </se_hypervis_subcycle_tom>
+<se_integration  se_dyn_target="theta-l"            > 'explicit' </se_integration>
+<se_mesh_file  se_dyn_target="theta-l"              > 'dev/null' </se_mesh_file>
+<se_nu se_dyn_target="theta-l"                      >3.4e-8</se_nu>
+<se_nu_div   se_dyn_target="theta-l"                > -1 </se_nu_div>
+<se_nu_p   se_dyn_target="theta-l"                  > -1 </se_nu_p>
+<se_nu_q   se_dyn_target="theta-l"                  > -1 </se_nu_q>
+<se_nu_s   se_dyn_target="theta-l"                  > -1 </se_nu_s>
+<se_nu_top     se_dyn_target="theta-l"              > 2.5e5 </se_nu_top>
+<se_qsplit   se_dyn_target="theta-l"                  > -1 </se_qsplit>
+<se_rsplit   se_dyn_target="theta-l"                  > -1 </se_rsplit>
+<se_geometry se_dyn_target="theta-l"                  > 'sphere' </se_geometry>
+<se_limiter_option se_dyn_target="theta-l"            > 9 </se_limiter_option>
+<se_lx se_dyn_target="theta-l"                        > 0.0 </se_lx>
+<se_ly se_dyn_target="theta-l"                        > 0.0 </se_ly>
+<se_ne se_dyn_target="theta-l"                        > 30 </se_ne>
+<se_ne_x se_dyn_target="theta-l"                      > 0 </se_ne_x>
+<se_ne_y se_dyn_target="theta-l"                      > 0 </se_ne_y>
+<se_nsplit  se_dyn_target="theta-l"                   > -1 </se_nsplit>
+<se_partmethod  se_dyn_target="theta-l"               > 4 </se_partmethod>
+<se_topology  se_dyn_target="theta-l"                 > 'cube' </se_topology>
+<se_tstep  se_dyn_target="theta-l"                    > 300 </se_tstep>
+<se_statefreq  se_dyn_target="theta-l"                > 480 </se_statefreq>
+<se_theta_advect_form se_dyn_target="theta-l"         > 1 </se_theta_advect_form>
+<se_theta_hydrostatic_mode se_dyn_target="theta-l"    > .false. </se_theta_hydrostatic_mode>
+<se_transport_alg se_dyn_target="theta-l"             > 12 </se_transport_alg>
+<se_tstep_type se_dyn_target="theta-l"                > 9 </se_tstep_type>
+<se_vert_remap_q_alg se_dyn_target="theta-l"          > 10 </se_vert_remap_q_alg>
+<se_vthreads se_dyn_target="theta-l"                  > 1 </se_vthreads>
+
+<se_hypervis_subcycle  hgrid="ne30np4"                           > 4 </se_hypervis_subcycle>
 <se_hypervis_subcycle  se_refined_mesh="1"                       > 3 </se_hypervis_subcycle>
 <se_hypervis_subcycle  hgrid="ne0np4CONUS.ne30x8" waccm_phys="1" > 1 </se_hypervis_subcycle>
 
@@ -2836,6 +2872,7 @@
 
 <se_hypervis_subcycle_q>1                 </se_hypervis_subcycle_q>
 <se_hypervis_subcycle_q hgrid="ne16np4">2 </se_hypervis_subcycle_q>
+<se_hypervis_subcycle_q hgrid="ne30np4">2 </se_hypervis_subcycle_q>
 
 <se_limiter_option> 8 </se_limiter_option>
 
@@ -2875,6 +2912,7 @@
 
 <se_nsplit>                   2 </se_nsplit>
 <se_nsplit hgrid="ne16np4" >  1 </se_nsplit>
+<se_nsplit hgrid="ne30np4" >  1 </se_nsplit>
 
 <se_nsplit hgrid="ne5np4"   waccm_phys="1"            >  3  </se_nsplit>
 <se_nsplit hgrid="ne16np4"  waccm_phys="1" waccmx="1" >  5  </se_nsplit>
@@ -2910,6 +2948,10 @@
 <se_horz_num_threads> 0 </se_horz_num_threads>
 <se_tracer_num_threads> 0 </se_tracer_num_threads>
 <se_vert_num_threads> 0 </se_vert_num_threads>
+
+<se_cubed_sphere_map>         0 </se_cubed_sphere_map>
+<dt_remap_factor>         2 </dt_remap_factor>
+<dt_tracer_factor>        6 </dt_tracer_factor>
 
 
 <!-- ================================================================== -->

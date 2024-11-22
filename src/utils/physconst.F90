@@ -43,6 +43,8 @@ module physconst
 
    ! Constants based off share code or defined in physconst
 
+   integer,parameter :: r16= selected_real_kind(24) ! 16 byte real
+
    real(r8), public, parameter :: avogad      = shr_const_avogad     ! Avogadro's number (molecules kmole-1)
    real(r8), public, parameter :: boltz       = shr_const_boltz      ! Boltzman's constant (J K-1 molecule-1)
    real(r8), public, parameter :: cday        = shr_const_cday       ! sec in calendar day (seconds)
@@ -52,6 +54,9 @@ module physconst
    real(r8), public, parameter :: latice      = shr_const_latice     ! Latent heat of fusion (J kg-1)
    real(r8), public, parameter :: latvap      = shr_const_latvap     ! Latent heat of vaporization (J kg-1)
    real(r8), public, parameter :: pi          = shr_const_pi         ! 3.14...
+  ! physical constants inherited from CAM
+  real (r8), public, parameter :: DD_PI =       shr_const_pi         ! 3.14...
+  real (r16), public, parameter :: QQ_PI = 3.141592653589793238462643383279_r16
 #ifdef planet_mars
    real(r8), public, parameter :: pstd        = 6.0E1_r8             ! Standard pressure (Pascals)
 #else

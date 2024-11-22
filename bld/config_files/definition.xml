@@ -29,6 +29,9 @@ Coupling framework: mct or nuopc.  Default: mct.
 <entry id="dyn" valid_values="eul,fv,fv3,se,mpas" value="">
 Dynamics package: eul, fv, fv3, se, or mpas.
 </entry>
+<entry id="se_dyn_target" valid_values="cam,preqx,preqx_acc,preqx_kokkos,theta-l,theta-l_kokkos" value="">
+SE Dynamics target: cam, preqx, preqx_acc, preqx_kokkos, theta-l or theta-l_kokkos. Default cam
+</entry>
 <entry id="waccm_phys" valid_values="0,1" value="0">
 Switch to turn on waccm physics: 0 => no, 1 => yes.
 </entry>

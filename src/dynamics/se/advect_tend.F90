@@ -21,17 +21,18 @@ contains
   !   - first call sets the initial mixing ratios
   !   - second call computes and outputs the tendencies
   !----------------------------------------------------------------------
-  subroutine compute_adv_tends_xyz(elem,fvm,nets,nete,qn0,n0)
+!jt  subroutine compute_adv_tends_xyz(elem,fvm,nets,nete,qn0,n0)
+  subroutine compute_adv_tends_xyz(elem,nets,nete,qn0,n0)
     use cam_history,            only: outfld, hist_fld_active
     use time_manager,           only: get_step_size
-    use constituents,           only: tottnam,pcnst    
+    use constituents,           only: tottnam,pcnst
     use dimensions_mod,         only: nc,np,nlev,ntrac
     use element_mod,            only: element_t
-    use fvm_control_volume_mod, only: fvm_struct    
+!jt    use fvm_control_volume_mod, only: fvm_struct
     implicit none
 
     type (element_t), intent(in) :: elem(:)
-    type(fvm_struct), intent(in) :: fvm(:)
+!jt    type(fvm_struct), intent(in) :: fvm(:)
     integer,          intent(in) :: nets,nete,qn0,n0
     real(r8) :: dt,idt
     integer  :: i,j,ic,nx,ie
@@ -44,7 +45,7 @@ contains
       nx=np
     endif
     allocate( ftmp(nx*nx,nlev) )
-    
+
     init = .false.
     if ( .not. allocated( adv_tendxyz ) ) then
       init = .true.
@@ -52,19 +53,19 @@ contains
       adv_tendxyz(:,:,:,:,:) = 0._r8
     endif
 
-    if (ntrac>0) then
-      do ie=nets,nete
-        do ic=1,pcnst
-          adv_tendxyz(:,:,:,ic,ie) = fvm(ie)%c(1:nc,1:nc,:,ic) - adv_tendxyz(:,:,:,ic,ie)
-        end do
-      end do
-    else
+!!$    if (ntrac>0) then
+!!$      do ie=nets,nete
+!!$        do ic=1,pcnst
+!!$          adv_tendxyz(:,:,:,ic,ie) = fvm(ie)%c(1:nc,1:nc,:,ic) - adv_tendxyz(:,:,:,ic,ie)
+!!$        end do
+!!$      end do
+!!$    else
       do ie=nets,nete
         do ic=1,pcnst
           adv_tendxyz(:,:,:,ic,ie) = elem(ie)%state%Qdp(:,:,:,ic,qn0)/elem(ie)%state%dp3d(:,:,:,n0)  - adv_tendxyz(:,:,:,ic,ie)
         enddo
       end do
-    end if
+!!$    end if
 
     if ( .not. init ) then
       dt = get_step_size()

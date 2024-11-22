@@ -41,6 +41,7 @@ def buildcpp(case):
     nthrds_atm = case.get_value("NTHRDS_ATM")
     cam_config_opts = case.get_value("CAM_CONFIG_OPTS")
     comp_interface=case.get_value("COMP_INTERFACE")
+    cam_target	= case.get_value("CAM_TARGET")
 
     # level information for CAM is part of the atm grid name - and must be stripped out
     nlev = ''
@@ -106,6 +107,9 @@ def buildcpp(case):
 
     if cam_dycore == 'fv3':
          config_opts += ["-fv3core_libdir", os.path.join(exeroot,"atm","obj","atmos_cubed_sphere")]
+
+    if cam_dycore == 'se':
+        config_opts += ["-se_dyn_target", cam_target]
 
     # The ocean component setting is only used by CAM to do attribute matching for
     # setting default tuning parameter values.  In SOM mode we want to use the same

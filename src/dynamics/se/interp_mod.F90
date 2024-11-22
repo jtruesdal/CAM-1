@@ -1,14 +1,16 @@
 module interp_mod
   use shr_kind_mod,        only: r8 => shr_kind_r8, r4 => shr_kind_r4
-  use dimensions_mod,      only: nelemd, np, ne
+  use dimensions_mod,      only: nelemd, np, ne, nelem
   use interpolate_mod,     only: interpdata_t
   use interpolate_mod,     only: interp_lat => lat, interp_lon => lon
   use interpolate_mod,     only: interp_gweight => gweight
-  use dyn_grid,            only: elem,fvm
-  use spmd_utils,          only: iam
+!jt  use dyn_grid,            only: elem,fvm
+  use dyn_grid,            only: elem
+  use spmd_utils,          only : iam, npes
   use cam_history_support, only: fillvalue
   use hybrid_mod,          only: hybrid_t, config_thread_region
   use cam_abortutils,      only: endrun
+  use cam_logfile,         only: iulog
 
   implicit none
   private
@@ -201,14 +203,16 @@ CONTAINS
     use dof_mod,          only: PutUniquePoints
     use interpolate_mod,  only: get_interp_parameter
     use shr_pio_mod,      only: shr_pio_getiosys
-    use edge_mod,         only: edgevpack, edgevunpack, initedgebuffer, freeedgebuffer
-    use edgetype_mod,     only: EdgeBuffer_t
-    use bndry_mod,        only: bndry_exchange
+!jt    use edge_mod,         only: edgevpack, edgevunpack, initedgebuffer, freeedgebuffer
+    use edge_mod,         only: edgevpack_nlyr, edgevunpack_nlyr, edge_g
+!jt    use edgetype_mod,     only: EdgeBuffer_t
+    use bndry_mod,        only: bndry_exchangeV
+!jt    use bndry_mod,        only: bndry_exchange
     use parallel_mod,     only: par
     use thread_mod,       only: horz_num_threads
     use cam_grid_support, only: cam_grid_id
     use hybrid_mod,       only: hybrid_t, config_thread_region, get_loop_ranges
-    use fvm_mod,          only: fill_halo_and_extend_panel
+!jt    use fvm_mod,          only: fill_halo_and_extend_panel
 
     type(file_desc_t), intent(inout) :: File
     type(var_desc_t) , intent(inout) :: varid
@@ -220,16 +224,19 @@ CONTAINS
     type(io_desc_t)                :: iodesc
     type(hybrid_t)                 :: hybrid
     type(iosystem_desc_t), pointer :: pio_subsystem
-    type (EdgeBuffer_t)            :: edgebuf              ! edge buffer
+!jt    type (EdgeBuffer_t)            :: edgebuf              ! edge buffer
 
 
     integer              :: lchnk, i, col_index, icol, ncols, ierr
     integer              :: nets, nete
-    integer              :: phys_decomp, fvm_decomp, gll_decomp
+!jt    integer              :: phys_decomp, fvm_decomp, gll_decomp
+    integer              :: phys_decomp, gll_decomp
 
     real(r8), pointer     :: dest(:,:,:,:)
     real(r8), pointer     :: fldout(:,:)
-    real(r8), allocatable :: fld_dyn(:,:,:), fld_tmp(:,:,:,:,:)
+
+!jt real(r8), allocatable :: fld_dyn(:,:,:), fld_tmp(:,:,:,:,:)
+    real(r8), allocatable :: fld_dyn(:,:,:)
 
     integer          :: st, en ! Start and end temporaries
     integer          :: ie, blk_ind(1), ncnt_out, k
@@ -241,7 +248,7 @@ CONTAINS
     usefillvalues=.false.
 
     phys_decomp = cam_grid_id('physgrid')
-    fvm_decomp  = cam_grid_id('FVM')
+!jt    fvm_decomp  = cam_grid_id('FVM')
     gll_decomp  = cam_grid_id('GLL')
     !
     ! There are 2 main scenarios regarding decomposition:
@@ -253,25 +260,28 @@ CONTAINS
        if(.not. local_dp_map) then
           call endrun(subname//': weak scaling does not support load balancing')
        end if
-      if (fv_nphys > 0) then
-        !
-        ! note that even if fv_nphys<4 then SIZE(fld,DIM=1)=PCOLS
-        !
-        nsize = fv_nphys
-        nhalo = 1!for bilinear only a halo of 1 is needed
-        nhcc  = nhc_phys
-      else
-        nsize = np
-        nhalo = 0!no halo needed (lat-lon point always surrounded by GLL points)
-        nhcc  = 0
-      end if
-    else if (decomp_type == fvm_decomp) then
-      !
-      ! CSLAM grid output
-      !
-      nsize = nc
-      nhalo = 1!for bilinear only a halo of 1 is needed
-      nhcc  = nhc
+       if (fv_nphys > 0) then
+          write(iulog,*) 'Atmopshere MPI tasks:  atm_ntasks=',npes
+          write(iulog,*) 'SE dycore MPI tasks, number of elements:',par%nprocs,nelem
+          call endrun('setup_history_interpolation: interpolated output not supported with physgrid')
+!jt        !
+!jt        ! note that even if fv_nphys<4 then SIZE(fld,DIM=1)=PCOLS
+!jt        !
+!jt        nsize = fv_nphys
+!jt        nhalo = 1!for bilinear only a halo of 1 is needed
+!jt        nhcc  = nhc_phys
+       else
+          nsize = np
+          nhalo = 0!no halo needed (lat-lon point always surrounded by GLL points)
+          nhcc  = 0
+       end if
+!jt    else if (decomp_type == fvm_decomp) then
+!jt      !
+!jt      ! CSLAM grid output
+!jt      !
+!jt      nsize = nc
+!jt      nhalo = 1!for bilinear only a halo of 1 is needed
+!jt      nhcc  = nhc
     else if (decomp_type == gll_decomp) then
       nsize = np
       nhalo = 0!no halo needed (lat-lon point always surrounded by GLL points)
@@ -279,8 +289,9 @@ CONTAINS
     else
       call endrun(subname//': unknown decomp_type')
     end if
-    allocate(fld_tmp(1-nhcc:nsize+nhcc,1-nhcc:nsize+nhcc,numlev,1,nelemd))
-    allocate(dest(1-nhalo:nsize+nhalo,1-nhalo:nsize+nhalo,numlev,nelemd))
+!jt    allocate(fld_tmp(1-nhcc:nsize+nhcc,1-nhcc:nsize+nhcc,numlev,1,nelemd))
+!jt    allocate(dest(1-nhalo:nsize+nhalo,1-nhalo:nsize+nhalo,numlev,nelemd))
+    allocate(dest(np,np,numlev,nelemd))
 
     nlon=get_interp_parameter('nlon')
     nlat=get_interp_parameter('nlat')
@@ -299,60 +310,68 @@ CONTAINS
          end do
       end do
 
-      if (fv_nphys > 0) then
-        do ie = 1, nelemd
-          fld_tmp(1:nsize,1:nsize,:,1,ie) = RESHAPE(fld_dyn(:,:,ie),(/nsize,nsize,numlev/))
-        end do
-      else
-        call initEdgeBuffer(par, edgebuf, elem, numlev,nthreads=1)
+!jt      if (fv_nphys > 0) then
+!jt        do ie = 1, nelemd
+!jt          fld_tmp(1:nsize,1:nsize,:,1,ie) = RESHAPE(fld_dyn(:,:,ie),(/nsize,nsize,numlev/))
+!jt        end do
+!jt      else
+!jt        call initEdgeBuffer(par, edgebuf, elem, numlev,nthreads=1)
 
         do ie = 1, nelemd
           ncols = elem(ie)%idxp%NumUniquePts
-          call putUniquePoints(elem(ie)%idxP, numlev, fld_dyn(1:ncols,1:numlev,ie), fld_tmp(:,:,1:numlev,1,ie))
-          call edgeVpack(edgebuf, fld_tmp(:,:,1:numlev,1,ie), numlev, 0, ie)
+!jt          call putUniquePoints(elem(ie)%idxP, numlev, fld_dyn(1:ncols,1:numlev,ie), fld_tmp(:,:,1:numlev,1,ie))
+!jt          call edgeVpack(edgebuf, fld_tmp(:,:,1:numlev,1,ie), numlev, 0, ie)
+          call putUniquePoints(elem(ie)%idxP, numlev, fld_dyn(1:ncols,:,ie), dest(:,:,:,ie))
+          call edgeVpack_nlyr(edge_g, elem(ie)%desc, dest(:,:,:,ie), numlev, 0, numlev)
         end do
         if(iam < par%nprocs) then
-          call bndry_exchange(par, edgebuf,location=subname)
+!jt          call bndry_exchange(par, edgebuf,location=subname)
+          call bndry_exchangeV(par, edge_g)
         end if
         do ie = 1, nelemd
-          call edgeVunpack(edgebuf, fld_tmp(:,:,1:numlev,1,ie), numlev, 0, ie)
+!jt          call edgeVunpack(edgebuf, fld_tmp(:,:,1:numlev,1,ie), numlev, 0, ie)
+          call edgeVunpack_nlyr(edge_g, elem(ie)%desc, dest(:,:,:,ie), numlev, 0, numlev)
         end do
-        call freeEdgeBuffer(edgebuf)
+!jt        call freeEdgeBuffer(edgebuf)
         !check if fill values are present:
-        usefillvalues = any(fld_tmp == fillvalue)
-      end if
+!jt        usefillvalues = any(fld_tmp == fillvalue)
+        usefillvalues = any(dest == fillvalue)
+!jt      end if
       deallocate(fld_dyn)
     else
       !
       ! not physics decomposition
       !
       do ie = 1, nelemd
-        fld_tmp(1:nsize,1:nsize,1:numlev,1,ie) = RESHAPE(fld(1:nsize*nsize,1:numlev,ie),(/nsize,nsize,numlev/))
+!jt        fld_tmp(1:nsize,1:nsize,1:numlev,1,ie) = RESHAPE(fld(1:nsize*nsize,1:numlev,ie),(/nsize,nsize,numlev/))
+        dest(1:nsize,1:nsize,1:numlev,ie) = RESHAPE(fld(1:nsize*nsize,1:numlev,ie),(/nsize,nsize,numlev/))
+!jt        fld_tmp(1:nsize,1:nsize,1:numlev,ie) = RESHAPE(fld(1:nsize*nsize,1:numlev,ie),(/nsize,nsize,numlev/))
       end do
       !check if fillvalues are present:
-      usefillvalues = any(fld_tmp == fillvalue)
+!jt      usefillvalues = any(fld_tmp == fillvalue)
+      usefillvalues = any(dest == fillvalue)
     end if
     !
     ! code for non-GLL grids: need to fill halo and interpolate (if on panel edge/corner) for bilinear interpolation
     !
-    if (decomp_type==fvm_decomp.or.(fv_nphys>0.and.decomp_type==phys_decomp)) then
-      !JMD $OMP PARALLEL NUM_THREADS(horz_num_threads), DEFAULT(SHARED), PRIVATE(hybrid,nets,nete,n)
-      !JMD        hybrid = config_thread_region(par,'horizontal')
-      hybrid = config_thread_region(par,'serial')
-      call get_loop_ranges(hybrid,ibeg=nets,iend=nete)
-      call fill_halo_and_extend_panel(elem(nets:nete),fvm(nets:nete),&
-           fld_tmp(:,:,:,:,nets:nete),hybrid,nets,nete,nsize,nhcc,nhalo,numlev,1,.true.,.true.)
-
-      !check if fill values are present:
-      usefillvalues = any(fld_tmp(:,:,:,:,nets:nete) == fillvalue)
-    end if
+!jt    if (decomp_type==fvm_decomp.or.(fv_nphys>0.and.decomp_type==phys_decomp)) then
+!jt      !JMD $OMP PARALLEL NUM_THREADS(horz_num_threads), DEFAULT(SHARED), PRIVATE(hybrid,nets,nete,n)
+!jt      !JMD        hybrid = config_thread_region(par,'horizontal')
+!jt      hybrid = config_thread_region(par,'serial')
+!jt      call get_loop_ranges(hybrid,ibeg=nets,iend=nete)
+!jt      call fill_halo_and_extend_panel(elem(nets:nete),fvm(nets:nete),&
+!jt           fld_tmp(:,:,:,:,nets:nete),hybrid,nets,nete,nsize,nhcc,nhalo,numlev,1,.true.,.true.)
+!jt
+!jt      !check if fill values are present:
+!jt      usefillvalues = any(fld_tmp(:,:,:,:,nets:nete) == fillvalue)
+!jt    end if
     !
     ! WARNING - 1:nelemd and nets:nete
     !
     !!$OMP MASTER   !JMD
-    dest(:,:,:,1:nelemd) = fld_tmp(1-nhalo:nsize+nhalo,1-nhalo:nsize+nhalo,:,1,1:nelemd)
+!jt    dest(:,:,:,1:nelemd) = fld_tmp(1-nhalo:nsize+nhalo,1-nhalo:nsize+nhalo,:,1,1:nelemd)
     !!$OMP END MASTER
-    deallocate(fld_tmp)
+!jt    deallocate(fld_tmp)
     !
     !***************************************************************************
     !
@@ -418,14 +437,16 @@ CONTAINS
     use dimensions_mod,   only: fv_nphys,nc,nhc,nhc_phys
     use dof_mod,          only: PutUniquePoints
     use shr_pio_mod,      only: shr_pio_getiosys
-    use edge_mod,         only: edgevpack, edgevunpack, initedgebuffer, freeedgebuffer
-    use edgetype_mod,     only: EdgeBuffer_t
-    use bndry_mod,        only: bndry_exchange
+    use edge_mod,         only : edge_g,edgevpack_nlyr, edgevunpack_nlyr
+    use bndry_mod,        only : bndry_exchangeV
+!    use edge_mod,         only: edgevpack, edgevunpack, initedgebuffer, freeedgebuffer
+!    use edgetype_mod,     only: EdgeBuffer_t
+!    use bndry_mod,        only: bndry_exchange
     use parallel_mod,     only: par
     use thread_mod,       only: horz_num_threads
     use cam_grid_support, only: cam_grid_id
     use hybrid_mod,       only: hybrid_t,config_thread_region, get_loop_ranges
-    use fvm_mod,          only: fill_halo_and_extend_panel
+!jt    use fvm_mod,          only: fill_halo_and_extend_panel
     use control_mod,      only: cubed_sphere_map
     use cube_mod,         only: dmap
 
@@ -437,21 +458,23 @@ CONTAINS
     type(hybrid_t)                 :: hybrid
     type(io_desc_t)                :: iodesc
     type(iosystem_desc_t), pointer :: pio_subsystem
-    type (EdgeBuffer_t)            :: edgebuf              ! edge buffer
+ !jt   type (EdgeBuffer_t)            :: edgebuf              ! edge buffer
 
     integer              :: lchnk, i, col_index, icol, ncols, ierr
     integer              :: nets, nete
 
     real(r8), allocatable :: dest(:,:,:,:,:)
     real(r8), pointer     :: fldout(:,:,:)
-    real(r8), allocatable :: fld_dyn(:,:,:,:), fld_tmp(:,:,:,:,:)
+!jt    real(r8), allocatable :: fld_dyn(:,:,:,:), fld_tmp(:,:,:,:,:)
+    real(r8), allocatable :: fld_dyn(:,:,:,:)
 
     integer          :: st, en ! Start and end temporaries
     integer          :: ie, blk_ind(1), ncnt_out, k
     integer, pointer :: idof(:)
     integer          :: nlon, nlat, ncol,nsize,nhalo,nhcc
     logical          :: usefillvalues
-    integer          :: phys_decomp, fvm_decomp,gll_decomp
+!jt    integer          :: phys_decomp, fvm_decomp,gll_decomp
+    integer          :: phys_decomp, gll_decomp
     real (r8)        :: D(2,2)   ! derivative of gnomonic mapping
     real (r8)        :: v1,v2
     character(len=*), parameter :: subname = 'write_interpolated_vector'
@@ -459,7 +482,7 @@ CONTAINS
     usefillvalues=.false.
 
     phys_decomp = cam_grid_id('physgrid')
-    fvm_decomp  = cam_grid_id('FVM')
+!jt    fvm_decomp  = cam_grid_id('FVM')
     gll_decomp  = cam_grid_id('GLL')
     !
     ! There are 2 main scenarios regarding decomposition:
@@ -472,24 +495,27 @@ CONTAINS
           call endrun(subname//': weak scaling does not support load balancing')
        end if
       if (fv_nphys > 0) then
-        !
-        ! note that even if fv_nphys<4 then SIZE(fld,DIM=1)=npsq
-        !
-        nsize = fv_nphys
-        nhalo = 1!for bilinear only a halo of 1 is needed
-        nhcc  = nhc_phys
+        write(iulog,*) 'Atmopshere MPI tasks:  atm_ntasks=',npes
+        write(iulog,*) 'SE dycore MPI tasks, number of elements:',par%nprocs,nelem
+        call endrun('setup_history_interpolation: interpolated output not supported with physgrid')
+!jt        !
+!jt        ! note that even if fv_nphys<4 then SIZE(fld,DIM=1)=npsq
+!jt        !
+!jt        nsize = fv_nphys
+!jt        nhalo = 1!for bilinear only a halo of 1 is needed
+!jt        nhcc  = nhc_phys
       else
         nsize = np
         nhalo = 0!no halo needed (lat-lon point always surrounded by GLL points)
         nhcc  = 0
       end if
-    else if (decomp_type == fvm_decomp) then
-      !
-      ! CSLAM grid output
-      !
-      nsize = nc
-      nhalo = 1!for bilinear only a halo of 1 is needed
-      nhcc  = nhc
+!jt    else if (decomp_type == fvm_decomp) then
+!jt      !
+!jt      ! CSLAM grid output
+!jt      !
+!jt      nsize = nc
+!jt      nhalo = 1!for bilinear only a halo of 1 is needed
+!jt      nhcc  = nhc
     else if (decomp_type == gll_decomp) then
       nsize = np
       nhalo = 0!no halo needed (lat-lon point always surrounded by GLL points)
@@ -497,14 +523,15 @@ CONTAINS
     else
       call endrun(subname//': unknown decomp_type')
     end if
-    allocate(fld_tmp(1-nhcc:nsize+nhcc,1-nhcc:nsize+nhcc,2,numlev,nelemd))
-    allocate(dest(1-nhalo:nsize+nhalo,1-nhalo:nsize+nhalo,2,numlev,nelemd))
+!jt    allocate(fld_tmp(1-nhcc:nsize+nhcc,1-nhcc:nsize+nhcc,2,numlev,nelemd))
+!jt    allocate(dest(1-nhalo:nsize+nhalo,1-nhalo:nsize+nhalo,2,numlev,nelemd))
 
     nlon=get_interp_parameter('nlon')
     nlat=get_interp_parameter('nlat')
     pio_subsystem => shr_pio_getiosys(atm_id)
     if(decomp_type == phys_decomp) then
       allocate(fld_dyn(nsize*nsize,2,numlev,nelemd))
+      allocate(dest(np,np,2,numlev,nelemd))
       fld_dyn = -999_R8
        !!$omp parallel do num_threads(horz_num_threads) private (col_index, lchnk, icol, ie, blk_ind, k)
       do col_index = 1, columns_on_task
@@ -515,29 +542,35 @@ CONTAINS
             fld_dyn(blk_ind(1), 2, k, ie) = fldv(icol, k, lchnk-begchunk+1)
          end do
       end do
-      if (fv_nphys > 0) then
-        do ie = 1, nelemd
-          fld_tmp(1:nsize,1:nsize,:,:,ie) = RESHAPE(fld_dyn(:,:,:,ie),(/nsize,nsize,2,numlev/))
-        end do
-      else
-        call initEdgeBuffer(par, edgebuf, elem, 2*numlev,nthreads=1)
+!jt      if (fv_nphys > 0) then
+!jt        do ie = 1, nelemd
+!jt          fld_tmp(1:nsize,1:nsize,:,:,ie) = RESHAPE(fld_dyn(:,:,:,ie),(/nsize,nsize,2,numlev/))
+!jt        end do
+!jt      else
+!jt        call initEdgeBuffer(par, edgebuf, elem, 2*numlev,nthreads=1)
 
         do ie = 1, nelemd
           ncols = elem(ie)%idxp%NumUniquePts
-          call putUniquePoints(elem(ie)%idxP, 2, numlev, fld_dyn(1:ncols,:,1:numlev,ie), fld_tmp(:,:,:,1:numlev,ie))
-          call edgeVpack(edgebuf, fld_tmp(:,:,:,:,ie), 2*numlev, 0, ie)
+!jt          call putUniquePoints(elem(ie)%idxP, 2, numlev, fld_dyn(1:ncols,:,1:numlev,ie), fld_tmp(:,:,:,1:numlev,ie))
+!jt          call edgeVpack(edgebuf, fld_tmp(:,:,:,:,ie), 2*numlev, 0, ie)
+          call putUniquePoints(elem(ie)%idxP, 2, numlev, fld_dyn(1:ncols,:,1:numlev,ie), dest(:,:,:,1:numlev,ie))
+
+          call edgeVpack_nlyr(edge_g, elem(ie)%desc, dest(:,:,:,:,ie), 2*numlev, 0, 2*numlev)
         end do
         if(iam < par%nprocs) then
-          call bndry_exchange(par, edgebuf,location=subname)
+!jt          call bndry_exchange(par, edgebuf,location=subname)
+          call bndry_exchangeV(par, edge_g)
         end if
 
         do ie = 1, nelemd
-          call edgeVunpack(edgebuf, fld_tmp(:,:,:,:,ie), 2*numlev, 0, ie)
+!jt          call edgeVunpack(edgebuf, fld_tmp(:,:,:,:,ie), 2*numlev, 0, ie)
+          call edgeVunpack_nlyr(edge_g, elem(ie)%desc, dest(:,:,:,:,ie), 2*numlev, 0, 2*numlev)
         end do
-        call freeEdgeBuffer(edgebuf)
+!jt        call freeEdgeBuffer(edgebuf)
         !check if fill values are present:
-        usefillvalues = any(fld_tmp==fillvalue)
-      end if
+!jt        usefillvalues = any(fld_tmp==fillvalue)
+        usefillvalues = any(dest==fillvalue)
+!jt      end if
       deallocate(fld_dyn)
     else
       !
@@ -546,8 +579,10 @@ CONTAINS
       !check if fill values are present:
       usefillvalues = (any(fldu(1:nsize:1,nsize,:)==fillvalue) .or. any(fldv(1:nsize:1,nsize,:)==fillvalue))
       do ie = 1, nelemd
-        fld_tmp(1:nsize,1:nsize,1,1:numlev,ie) = RESHAPE(fldu(1:nsize*nsize,1:numlev,ie),(/nsize,nsize,numlev/))
-        fld_tmp(1:nsize,1:nsize,2,1:numlev,ie) = RESHAPE(fldv(1:nsize*nsize,1:numlev,ie),(/nsize,nsize,numlev/))
+!jt        fld_tmp(1:nsize,1:nsize,1,1:numlev,ie) = RESHAPE(fldu(1:nsize*nsize,1:numlev,ie),(/nsize,nsize,numlev/))
+!jt        fld_tmp(1:nsize,1:nsize,2,1:numlev,ie) = RESHAPE(fldv(1:nsize*nsize,1:numlev,ie),(/nsize,nsize,numlev/))
+        dest(1:nsize,1:nsize,1,1:numlev,ie) = RESHAPE(fldu(1:nsize*nsize,1:numlev,ie),(/nsize,nsize,numlev/))
+        dest(1:nsize,1:nsize,2,1:numlev,ie) = RESHAPE(fldv(1:nsize*nsize,1:numlev,ie),(/nsize,nsize,numlev/))
       end do
     endif
     !
@@ -557,42 +592,43 @@ CONTAINS
     !
     !***************************************************************************
     !
-    if (decomp_type==fvm_decomp.or.(fv_nphys>0.and.decomp_type==phys_decomp)) then
-      !
-      !***************************************************************************
-      !
-      ! code for non-GLL grids: need to fill halo and interpolate
-      ! (if on panel edge/corner) for bilinear interpolation
-      !
-      !***************************************************************************
-      !
-
-      !JMD $OMP PARALLEL NUM_THREADS(horz_num_threads), DEFAULT(SHARED), PRIVATE(hybrid,nets,nete,n)
-      !JMD        hybrid = config_thread_region(par,'horizontal')
-      hybrid = config_thread_region(par,'serial')
-      call get_loop_ranges(hybrid,ibeg=nets,iend=nete)
-      call fill_halo_and_extend_panel(elem(nets:nete),fvm(nets:nete),&
-           fld_tmp(:,:,:,:,nets:nete),hybrid,nets,nete,nsize,nhcc,nhalo,2,numlev,.true.,.false.)
-      do ie=nets,nete
-        call vec_latlon_to_contra(elem(ie),nsize,nhcc,numlev,fld_tmp(:,:,:,:,ie),fvm(ie))
-      end do
-      call fill_halo_and_extend_panel(elem(nets:nete),fvm(nets:nete),&
-           fld_tmp(:,:,:,:,nets:nete),hybrid,nets,nete,nsize,nhcc,nhalo,2,numlev,.false.,.true.)
-
-      !check if fill values are present:
-      usefillvalues = any(fld_tmp(:,:,:,:,nets:nete) == fillvalue)
-    else
+!jt    if (decomp_type==fvm_decomp.or.(fv_nphys>0.and.decomp_type==phys_decomp)) then
+!jt      !
+!jt      !***************************************************************************
+!jt      !
+!jt      ! code for non-GLL grids: need to fill halo and interpolate
+!jt      ! (if on panel edge/corner) for bilinear interpolation
+!jt      !
+!jt      !***************************************************************************
+!jt      !
+!jt
+!jt      !JMD $OMP PARALLEL NUM_THREADS(horz_num_threads), DEFAULT(SHARED), PRIVATE(hybrid,nets,nete,n)
+!jt      !JMD        hybrid = config_thread_region(par,'horizontal')
+!jt      hybrid = config_thread_region(par,'serial')
+!jt      call get_loop_ranges(hybrid,ibeg=nets,iend=nete)
+!jt      call fill_halo_and_extend_panel(elem(nets:nete),fvm(nets:nete),&
+!jt           fld_tmp(:,:,:,:,nets:nete),hybrid,nets,nete,nsize,nhcc,nhalo,2,numlev,.true.,.false.)
+!jt      do ie=nets,nete
+!jt        call vec_latlon_to_contra(elem(ie),nsize,nhcc,numlev,fld_tmp(:,:,:,:,ie),fvm(ie))
+!jt      end do
+!jt      call fill_halo_and_extend_panel(elem(nets:nete),fvm(nets:nete),&
+!jt           fld_tmp(:,:,:,:,nets:nete),hybrid,nets,nete,nsize,nhcc,nhalo,2,numlev,.false.,.true.)
+!jt
+!jt      !check if fill values are present:
+!jt      usefillvalues = any(fld_tmp(:,:,:,:,nets:nete) == fillvalue)
+!jt    else
       do ie=1,nelemd
-        call vec_latlon_to_contra(elem(ie),nsize,nhcc,numlev,fld_tmp(:,:,:,:,ie))
+!jt        call vec_latlon_to_contra(elem(ie),nsize,nhcc,numlev,fld_tmp(:,:,:,:,ie))
+        call vec_latlon_to_contra(elem(ie),nsize,nhcc,numlev,dest(:,:,:,:,ie))
       end do
-    end if
+!jt    end if
     !
     ! WARNING - 1:nelemd and nets:nete
     !
     !!$OMP MASTER   !JMD
-    dest(:,:,:,:,1:nelemd) = fld_tmp(1-nhalo:nsize+nhalo,1-nhalo:nsize+nhalo,:,:,1:nelemd)
+!jt    dest(:,:,:,:,1:nelemd) = fld_tmp(1-nhalo:nsize+nhalo,1-nhalo:nsize+nhalo,:,:,1:nelemd)
     !!$OMP END MASTER
-    deallocate(fld_tmp)
+!tj    deallocate(fld_tmp)
     !
     !***************************************************************************
     !
@@ -629,7 +665,7 @@ CONTAINS
       do i=1,cam_interpolate(ie)%n_interp
         ! convert fld from contra->latlon
         call dmap(D,cam_interpolate(ie)%interp_xy(i)%x,cam_interpolate(ie)%interp_xy(i)%y,&
-             elem(ie)%corners3D,cubed_sphere_map,elem(ie)%corners,elem(ie)%u2qmap,elem(ie)%facenum)
+             elem(ie)%corners3D,cubed_sphere_map,elem(ie)%cartp,elem(ie)%facenum)
         ! convert fld from contra->latlon
         do k=1,numlev
           v1 = fldout(st+i-1,k,1)

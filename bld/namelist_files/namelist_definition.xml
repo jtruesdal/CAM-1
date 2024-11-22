@@ -5683,6 +5683,7 @@ full of zeros.
 Default: set by build-namelist.
 </entry>
 
+
 <!-- Tropopause -->
 
 <entry id="tropopause_climo_file" type="char*256" input_pathname="abs" category="tropo"
@@ -7478,6 +7479,49 @@ Default: Set by build-namelist.
 
 <!-- SE dycore -->
 
+<entry id="cubed_sphere_map" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Defines which map is used for reference element in homme.
+Must be 2 for compsets using TempestRemap mapping files.
+Default: 2
+</entry>
+
+<!-- timestep parameters -->
+
+<entry id="se_tstep" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Dynamics timestep.  Replaces se_nsplit.
+</entry>
+
+<entry id="se_nsplit" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Number of dynamics steps per physics timestep.
+dt_remap = dtime/se_nsplit
+dt_tracer = dt_remap / rsplit
+dt_dyn = dt_tracer / qsplit
+dt_dyn_vis = dt_dyn / hypervis_subcycle
+dt_tracer_vis = dt_tracer / hypervis_subcycle_q
+Default: Set by build-namelist.
+</entry>
+
+<entry id="dt_tracer_factor" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+The tracer advection timestep is dt_tracer_factor*se_tstep, where se_tstep is
+the dynamics timesteps. dt_tracer_factor*se_tstep must divide dtime, and one of
+dt_remap_factor and dt_tracer_factor must divide the other.
+Replaces qsplit, rsplit.
+Default: Set by build-namelist.
+</entry>
+
+<entry id="dt_remap_factor" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+The vertically Lagrangian remap timestep is dt_remap_factor*se_tstep, where
+se_tstep is the dynamics timesteps. dt_remap_factor*se_tstep must divide dtime,
+and one of dt_remap_factor and dt_tracer_factor must divide the other.
+Replaces qsplit, rsplit.
+If dt_remap_factor=0, vertically Lagrangian code is off.
+</entry>
+
 <entry id="se_fine_ne" type="integer" category="se"
        group="dyn_se_inparm" valid_values="" >
 Set for refined exodus meshes (variable viscosity).
@@ -7495,12 +7539,117 @@ CAM physics forcing option:
 Default: Set by build-namelist.
 </entry>
 
-<entry id="se_hypervis_power" type="real" category="se"
+<entry id="se_integration" type="char*80" category="se"
+       group="dyn_se_inparm" valid_values="explicit" >
+Time integration method.
+Default: explicit.
+</entry>
+
+<entry id="se_ne" type="integer" category="se"
        group="dyn_se_inparm" valid_values="" >
-Scalar viscosity with variable coefficient.
-Use variable hyperviscosity based on element area limited by
-se_max_hypervis_courant.
-Default: 0
+Use internally generated cubed sphere mesh of size 6 x se_ne x se_ne.
+If se_ne=0 (RRM grids), read mesh from Exodus file.
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_ne_x" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Number of elements in the x direction, for doubly periodic mode
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_ne_y" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Number of elements in the y direction, for doubly periodic mode
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_lx" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Length of domain in meters in x direction, for doubly periodic mode
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_ly" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Length of domain in meters in y direction, for doubly periodic mode
+Default: Set by build-namelist.
+</entry>
+
+
+<!-- viscosity parameters -->
+
+<entry id="se_hypervis_order" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="2" >
+Hyperviscosity operator is the Laplacian^hypervis_order.
+The only supported value in CAM is "2".
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_hypervis_subcycle" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Number of hyperviscosity subcycles per dynamics timestep.
+Default: Set by build-namelist
+</entry>
+
+<entry id="se_hypervis_subcycle_tom" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+If non-zero, subcycle TOM diffusion operator separately from hyperviscsoity
+with dt_vis_tom=dt_dyn/hypervis_subcycle_tom.
+Default: 1
+</entry>
+
+<entry id="se_hypervis_subcycle_q" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Number of hyperviscosity subcycles done in tracer advection code.
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_nu" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Hyperviscosity coefficient for u,v, T [m^4/s].
+If &lt; 0, se_nu is automatically set.
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_nu_div" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Hyperviscosity applied to divergence component of winds [m^4/s].
+If &lt; 0, uses se_nu_p.
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_nu_s" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Hyperviscosity applied to dynamics scalars [m^4/s].
+If < 0, uses nu.
+Default: -1.
+</entry>
+
+<entry id="se_nu_p" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Hyperviscosity coefficient applied to pressure-level thickness [m^4/s].
+If &lt; 0, se_nu_p is automatically set.
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_nu_q" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Hyperviscosity applied during tracer advection [m^4/s].
+If < 0, uses nu.
+Default: -1.
+</entry>
+
+<entry id="se_nu_top" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Second-order viscosity applied only near the model top [m^2/s].
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_tom_sponge_start" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Bottom of sponge layer in hPa.
+Default: 0 (use default value based on reference pressure at model top).
 </entry>
 
 <entry id="se_hypervis_scaling" type="real" category="se"
@@ -7514,10 +7663,12 @@ doi:10.5194/gmd-7-2803-2014, 2014.
 Default: 0 (i.e., not used)
 </entry>
 
-<entry id="se_hypervis_subcycle" type="integer" category="se"
+<entry id="se_hypervis_power" type="real" category="se"
        group="dyn_se_inparm" valid_values="" >
-Number of hyperviscosity subcycles per dynamics timestep.
-Default: Set by build-namelist
+Scalar viscosity with variable coefficient.
+Use variable hyperviscosity based on element area limited by
+se_max_hypervis_courant.
+Default: 0
 </entry>
 
 <entry id="se_hypervis_subcycle_sponge" type="integer" category="se"
@@ -7541,11 +7692,6 @@ multiplied by a factor of se_molecular_diff.
 Default: 0.
 </entry>
 
-<entry id="se_hypervis_subcycle_q" type="integer" category="se"
-       group="dyn_se_inparm" valid_values="" >
-Number of hyperviscosity subcycles done in tracer advection code.
-Default: Set by build-namelist.
-</entry>
 
 <entry id="se_limiter_option" type="integer" category="se"
        group="dyn_se_inparm" valid_values="0,4,8" >
@@ -7581,12 +7727,6 @@ Number of PEs to be used by SE dycore.
 Default: Number of PEs used by CAM.
 </entry>
 
-<entry id="se_nsplit" type="integer" category="se"
-       group="dyn_se_inparm" valid_values="" >
-Number of dynamics steps per physics timestep.
-Default: Set by build-namelist.
-</entry>
-
 <entry id="se_phys_dyn_cp" type="integer" category="se"
        group="dyn_se_inparm" valid_values="0,1,2" >
 Scaling of temperature increment for different levels of
@@ -7597,32 +7737,6 @@ thermal energy consistency.
 Default: Set by build-namelist.
 </entry>
 
-<entry id="se_nu" type="real" category="se"
-       group="dyn_se_inparm" valid_values="" >
-Hyperviscosity coefficient for u,v, T [m^4/s].
-If &lt; 0, se_nu is automatically set.
-Default: Set by build-namelist.
-</entry>
-
-<entry id="se_nu_div" type="real" category="se"
-       group="dyn_se_inparm" valid_values="" >
-Hyperviscosity applied to divergence component of winds [m^4/s].
-If &lt; 0, uses se_nu_p.
-Default: Set by build-namelist.
-</entry>
-
-<entry id="se_nu_p" type="real" category="se"
-       group="dyn_se_inparm" valid_values="" >
-Hyperviscosity coefficient applied to pressure-level thickness [m^4/s].
-If &lt; 0, se_nu_p is automatically set.
-Default: Set by build-namelist.
-</entry>
-
-<entry id="se_nu_top" type="real" category="se"
-       group="dyn_se_inparm" valid_values="" >
-Second-order viscosity applied only near the model top [m^2/s].
-Default: Set by build-namelist.
-</entry>
 
 <entry id="se_sponge_del4_nu_fac" type="real" category="se"
        group="dyn_se_inparm" valid_values="" >
@@ -7728,6 +7842,12 @@ Vertically lagrangian code vertically remaps every rsplit tracer timesteps.
 Default: Set by build-namelist.
 </entry>
 
+<entry id="se_partmethod" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="4" >
+Mesh partitioning method.  The only supported value in CAM is 4 (space-filling).
+Default: 4
+</entry>
+
 <entry id="se_statefreq" type="integer" category="se"
        group="dyn_se_inparm" valid_values="" >
 Frequency with which diagnostic output is written to log (output every
@@ -7749,6 +7869,19 @@ Default: 4
        group="dyn_se_inparm" valid_values="" >
 Number of tracers to include in logfile diagnostics for SE dycore
 Default: 3
+</entry>
+
+<entry id="vert_remap_q_alg" type="integer" category="se"
+    group="dyn_se_inparm" valid_values="0,1,2,10">
+CAM-SE vertical remap algorithm
+0: default value, Zerroukat monotonic splines
+1: PPM vertical remap with mirroring at the boundaries
+   (solid wall bc's, high-order throughout)
+2: PPM vertical remap without mirroring at the boundaries
+   (no bc's enforced, first-order at two cells bordering top and bottom
+   boundaries)
+10: PPM with 2nd order boundary treatment
+Default: 10
 </entry>
 
 <entry id="se_vert_remap_T" type="char*32" category="se"
@@ -7875,8 +8008,29 @@ Default: .false.
 List of SCRIP grid filenames each representing a destination grid. If provided during a CAM simulation running the spectral element dycore, mapping files will be created from the native cubed-sphere grid to each destination grid. Both native mapping (using the internal spectral element basis functions) and bilinear maps are created.
 Default: none
 </entry>
+<entry id="se_geometry" type="char*80" category="se"
+       group="dyn_se_inparm" valid_values="sphere,plane" >
+SE's geometry.
+Only "sphere" is supported in CAM. "plane" allowed for SCREAM in doubly
+periodic mode.
+Default: Set by build-namelist.
+</entry>
+
+<entry id="se_topology" type="char*80" category="se"
+       group="dyn_se_inparm" valid_values="cube,plane" >
+SE's topology.
+Only "cube" is supported in CAM. "plane" allowed for SCREAM in doubly
+periodic mode.
+Default: Set by build-namelist.
+</entry>
 
 <!-- SE performance (threading) entries -->
+<entry id="se_vthreads" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Number of vertical threads.
+Default: 1.
+</entry>
+
 <entry id="se_horz_num_threads" type="integer" category="se"
        group="dyn_se_inparm" valid_values="" >
 Number of threads to use for loops over elements.
@@ -7895,6 +8049,92 @@ Default: Set by build-namelist.
 Number of threads to use when processing loops over threads.
 Normally equal to se_vert_num_threads.
 Default: Set by build-namelist.
+</entry>
+
+<entry id="theta_hydrostatic_mode" type="logical" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Run theta model in hydrostatic mode.
+Default: true.
+</entry>
+
+<entry id="theta_advect_form" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Indicates form of eqn. for vtheta in theta model.
+0 is conservation form, 1 is expanded div form.
+Default: 1.
+</entry>
+
+<entry id="pgrad_correction" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="0,1" >
+Turn on use of balanced geopotential state to reduce
+pressure gradient discretization error.
+Default: 0
+</entry>
+<entry id="hv_ref_profiles" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="0,1,2,6" >
+Modifications to hyperviscosity to minimize dissipation of
+background reference states.
+Default: 0
+</entry>
+<entry id="hv_theta_correction" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="0,1" >
+For potential temperature equation, use Laplacian on pressure surfaces in
+hyperviscosity operator.
+Default: 0
+</entry>
+<entry id="hv_theta_thresh" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Max threshold for Laplacian on pressure surface d(theta)/dp correction term.
+Default (set by dycore)
+</entry>
+
+<entry id="vtheta_thresh" type="real" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Minimum threshold for virtual potential temperature in the theta dycore.
+Values below this will trigger a warning and be clipped.
+Default: (set by dycore).
+</entry>
+
+<!-- tracer transport options -->
+
+<entry id="se_transport_alg" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="0,12" >
+Tracer transport algorithm:
+0: Eulerian flux-form.
+12: COMPOSE semi-Lagrangian.
+Default: 12
+</entry>
+
+<entry id="se_semi_lagrange_cdr_alg" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="2,3,20,21,30" >
+Constrained density reconstuctor (CDR) for property preservation:
+2: QLT
+3: CAAS
+20: QLT with superlevels of 8 levels.
+21: QLT with superlevels of 8 levels; use local CAAS over sublevels.
+30: CAAS with superlevels of 8 levels.
+Default: (set by dycore)
+</entry>
+
+<entry id="se_semi_lagrange_cdr_check" type="logical" category="se"
+       group="dyn_se_inparm" valid_values="">
+Correctness check the CDR.
+Default: (set by dycore)
+</entry>
+
+<entry id="semi_lagrange_nearest_point_lev" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="">
+Number of levels, counting from the top, that are allowed to use the
+nearest point in the halo to the departure point, when necessary.
+Default: (set by dycore)
+</entry>
+
+<entry id="semi_lagrange_hv_q" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="">
+Number of tracers, starting from 1, to which to apply hyperviscosity. For
+example, to apply hyperviscosity to moisture, the first tracer, set the value to
+1. Hyperviscosity is applied using nu_q as the coefficient.
+Default: (set by dycore)
 </entry>
 
 
