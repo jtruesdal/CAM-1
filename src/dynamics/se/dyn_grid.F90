@@ -73,7 +73,6 @@ type(element_t),   pointer :: elem(:) => null()
 real(r8),          pointer :: w(:) => null()        ! weights
 
 ! FV physics grid resolution (physics on GLL grid if NPG=0)
-public ::  fv_nphys
 public ::  dyn_decomp
 public ::  ini_grid_name
 public ::  ini_grid_hdim_name

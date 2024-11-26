@@ -11,16 +11,16 @@ module gravity_waves_sources
   implicit none
   private
   save
-  
+
   !! gravity_waves_sources created by S Santos, 10 Aug 2011
-  !! 
+  !!
   !! gws_src_fnct starts parallel environment and computes frontogenesis
   !!   for use by WACCM (via dp_coupling)
- 
+
   public  :: gws_src_fnct
   public  :: gws_init
   private :: compute_frontogenesis
-  
+
   real(r8) :: psurf_ref
 
 CONTAINS
@@ -33,27 +33,26 @@ CONTAINS
     type (element_t), intent(inout), dimension(:) :: elem
     !---------------------------------------------------------------------------
     ! Set up variables similar to dyn_comp and prim_driver_mod initializations
-    
+
     psurf_ref = hypi(plev+1)
 
   end subroutine gws_init
   !-------------------------------------------------------------------------------------------------
   subroutine gws_src_fnct(elem, tl, nphys, frontgf, frontga)
-    use dimensions_mod, only  : npsq, nelemd
+    use dimensions_mod, only  : npsq, nelemd, fv_nphys
     use dof_mod, only         : UniquePoints
     use dyn_grid, only        : dom_mt
     use hybrid_mod, only      : hybrid_create
     use parallel_mod, only    : par
     use ppgrid, only          : pver
     use thread_mod, only      : omp_get_thread_num
-    use dyn_grid, only        : fv_nphys
     implicit none
     type (element_t), intent(inout), dimension(:) :: elem
     integer, intent(in)          :: tl
     integer,               intent(in   ) :: nphys
     real (kind=real_kind), intent(out  ) :: frontgf(nphys*nphys,pver,nelemd)
     real (kind=real_kind), intent(out  ) :: frontga(nphys*nphys,pver,nelemd)
-    
+
     ! Local variables
     type (hybrid_t) :: hybrid
     integer :: nets, nete, ithr, ncols, ie, k
@@ -96,7 +95,7 @@ CONTAINS
   !   theta  = potential temperature
   !   gradth = grad(theta)
   !   C = ( gradth dot grad ) U
-  ! 
+  !
   ! Original by Mark Taylor, July 2011
   ! Change by Santos, 10 Aug 2011:
   ! Integrated into gravity_waves_sources module, several arguments made global
@@ -104,20 +103,20 @@ CONTAINS
   ! Change by Aaron Donahue, April 2017:
   !   Fixed bug where boundary information was called for processors not associated
   !   with dynamics when dyn_npes<npes
-  ! 
+  !
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     use physical_constants, only : kappa
     use derivative_mod, only : gradient_sphere, ugradv_sphere
     use edge_mod,           only : edge_g, edgevpack_nlyr, edgevunpack_nlyr
     use bndry_mod, only : bndry_exchangev
     use dyn_grid,           only: hvcoord
-    use spmd_utils,         only: iam 
-    use parallel_mod,       only: par 
-    use element_ops,        only : get_temperature
-    use dyn_grid,           only: fv_nphys
-    use prim_driver_mod, only     : deriv1
-    use element_ops,        only : get_temperature
-    use gllfvremap_mod, only  : gfr_g2f_scalar, gfr_g2f_vector
+    use spmd_utils,         only: iam
+    use parallel_mod,       only: par
+    use element_ops,        only: get_temperature
+    use dimensions_mod,     only: fv_nphys
+    use prim_driver_mod,    only: deriv1
+    use element_ops,        only: get_temperature
+    use gllfvremap_mod,     only: gfr_g2f_scalar, gfr_g2f_vector
     implicit none
     type (hybrid_t)      , intent(in) :: hybrid
     type(element_t),target,intent(inout) :: elem(:)
@@ -125,7 +124,7 @@ CONTAINS
     integer, intent(in) :: tl ! timelevel to use
     real(kind=real_kind),  intent(out  ) :: frontgf(nphys,nphys,nlev,nets:nete)
     real(kind=real_kind),  intent(out  ) :: frontga(nphys,nphys,nlev,nets:nete)
-  
+
     ! local
     integer :: k,kptr,i,j,ie,component
     real(kind=real_kind) :: frontgf_gll(np,np,nlev,nets:nete)
@@ -135,7 +134,7 @@ CONTAINS
     real(kind=real_kind) :: temperature(np,np,nlev)  ! Temperature
     real(kind=real_kind) :: C(np,np,2), wf1(nphys*nphys,nlev), wf2(nphys*nphys,nlev)
     !---------------------------------------------------------------------------
-    
+
     do ie=nets,nete
        do k=1,nlev
           ! pressure at mid points
@@ -156,12 +155,12 @@ CONTAINS
       ! pack
        call edgeVpack_nlyr(edge_g, elem(ie)%desc, frontgf_gll(:,:,:,ie),nlev,0,3*nlev)
        call edgeVpack_nlyr(edge_g, elem(ie)%desc, gradth_gll(:,:,:,:,ie),2*nlev,nlev,3*nlev)
-          
+
     end do ! ie
-          
+
     ! Boundary exchange
     if (par%dynproc) call bndry_exchangeV(hybrid,edge_g)
-          
+
     do ie=nets,nete
       ! unpack
      call edgeVunpack_nlyr(edge_g, elem(ie)%desc,frontgf_gll(:,:,:,ie),nlev,0,3*nlev)

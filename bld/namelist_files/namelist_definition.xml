@@ -7479,7 +7479,7 @@ Default: Set by build-namelist.
 
 <!-- SE dycore -->
 
-<entry id="cubed_sphere_map" type="integer" category="se"
+<entry id="se_cubed_sphere_map" type="integer" category="se"
        group="dyn_se_inparm" valid_values="" >
 Defines which map is used for reference element in homme.
 Must be 2 for compsets using TempestRemap mapping files.
@@ -7504,7 +7504,7 @@ dt_tracer_vis = dt_tracer / hypervis_subcycle_q
 Default: Set by build-namelist.
 </entry>
 
-<entry id="dt_tracer_factor" type="integer" category="se"
+<entry id="se_dt_tracer_factor" type="integer" category="se"
        group="dyn_se_inparm" valid_values="" >
 The tracer advection timestep is dt_tracer_factor*se_tstep, where se_tstep is
 the dynamics timesteps. dt_tracer_factor*se_tstep must divide dtime, and one of
@@ -7513,13 +7513,14 @@ Replaces qsplit, rsplit.
 Default: Set by build-namelist.
 </entry>
 
-<entry id="dt_remap_factor" type="integer" category="se"
+<entry id="se_dt_remap_factor" type="integer" category="se"
        group="dyn_se_inparm" valid_values="" >
 The vertically Lagrangian remap timestep is dt_remap_factor*se_tstep, where
 se_tstep is the dynamics timesteps. dt_remap_factor*se_tstep must divide dtime,
 and one of dt_remap_factor and dt_tracer_factor must divide the other.
 Replaces qsplit, rsplit.
 If dt_remap_factor=0, vertically Lagrangian code is off.
+Default: 2
 </entry>
 
 <entry id="se_fine_ne" type="integer" category="se"
@@ -7574,6 +7575,13 @@ Default: Set by build-namelist.
        group="dyn_se_inparm" valid_values="" >
 Length of domain in meters in y direction, for doubly periodic mode
 Default: Set by build-namelist.
+</entry>
+
+<entry id="se_cubed_sphere_map" type="integer" category="se"
+       group="dyn_se_inparm" valid_values="" >
+Defines which map is used for reference element in homme.
+Must be 2 for compsets using TempestRemap mapping files.
+Default: 0
 </entry>
 
 
@@ -7871,7 +7879,7 @@ Number of tracers to include in logfile diagnostics for SE dycore
 Default: 3
 </entry>
 
-<entry id="vert_remap_q_alg" type="integer" category="se"
+<entry id="se_vert_remap_q_alg" type="integer" category="se"
     group="dyn_se_inparm" valid_values="0,1,2,10">
 CAM-SE vertical remap algorithm
 0: default value, Zerroukat monotonic splines
@@ -8051,44 +8059,44 @@ Normally equal to se_vert_num_threads.
 Default: Set by build-namelist.
 </entry>
 
-<entry id="theta_hydrostatic_mode" type="logical" category="se"
+<entry id="se_theta_hydrostatic_mode" type="logical" category="se"
        group="dyn_se_inparm" valid_values="" >
 Run theta model in hydrostatic mode.
 Default: true.
 </entry>
 
-<entry id="theta_advect_form" type="integer" category="se"
+<entry id="se_theta_advect_form" type="integer" category="se"
        group="dyn_se_inparm" valid_values="" >
 Indicates form of eqn. for vtheta in theta model.
 0 is conservation form, 1 is expanded div form.
 Default: 1.
 </entry>
 
-<entry id="pgrad_correction" type="integer" category="se"
+<entry id="se_pgrad_correction" type="integer" category="se"
        group="dyn_se_inparm" valid_values="0,1" >
 Turn on use of balanced geopotential state to reduce
 pressure gradient discretization error.
 Default: 0
 </entry>
-<entry id="hv_ref_profiles" type="integer" category="se"
+<entry id="se_hv_ref_profiles" type="integer" category="se"
        group="dyn_se_inparm" valid_values="0,1,2,6" >
 Modifications to hyperviscosity to minimize dissipation of
 background reference states.
 Default: 0
 </entry>
-<entry id="hv_theta_correction" type="integer" category="se"
+<entry id="se_hv_theta_correction" type="integer" category="se"
        group="dyn_se_inparm" valid_values="0,1" >
 For potential temperature equation, use Laplacian on pressure surfaces in
 hyperviscosity operator.
 Default: 0
 </entry>
-<entry id="hv_theta_thresh" type="real" category="se"
+<entry id="se_hv_theta_thresh" type="real" category="se"
        group="dyn_se_inparm" valid_values="" >
 Max threshold for Laplacian on pressure surface d(theta)/dp correction term.
 Default (set by dycore)
 </entry>
 
-<entry id="vtheta_thresh" type="real" category="se"
+<entry id="se_vtheta_thresh" type="real" category="se"
        group="dyn_se_inparm" valid_values="" >
 Minimum threshold for virtual potential temperature in the theta dycore.
 Values below this will trigger a warning and be clipped.
@@ -8122,14 +8130,14 @@ Correctness check the CDR.
 Default: (set by dycore)
 </entry>
 
-<entry id="semi_lagrange_nearest_point_lev" type="integer" category="se"
+<entry id="se_semi_lagrange_nearest_point_lev" type="integer" category="se"
        group="dyn_se_inparm" valid_values="">
 Number of levels, counting from the top, that are allowed to use the
 nearest point in the halo to the departure point, when necessary.
 Default: (set by dycore)
 </entry>
 
-<entry id="semi_lagrange_hv_q" type="integer" category="se"
+<entry id="se_semi_lagrange_hv_q" type="integer" category="se"
        group="dyn_se_inparm" valid_values="">
 Number of tracers, starting from 1, to which to apply hyperviscosity. For
 example, to apply hyperviscosity to moisture, the first tracer, set the value to

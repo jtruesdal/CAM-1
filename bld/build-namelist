@@ -3772,7 +3772,7 @@ if ($dyn =~ /se/) {
 		   se_dt_tracer_factor
 		   se_hypervis_order
 		   se_hypervis_scaling
-		   se_hypervis_subcycl
+		   se_hypervis_subcycle
 		   se_hypervis_subcycle_q
 		   se_hypervis_subcycle_tom
 		   se_integration

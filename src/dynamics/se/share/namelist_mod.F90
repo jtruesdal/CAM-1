@@ -31,7 +31,7 @@ module namelist_mod
   !-----------------
   use cam_abortutils, only: endrun
 !jt  use parallel_mod,   only: parallel_t, partitionfornodes, useframes
-  use parallel_mod,   only: parallel_t, partitionfornodes
+  use parallel_mod,   only: parallel_t, partitionfornodes, abortmp
   !-----------------
 
 
@@ -73,8 +73,10 @@ module namelist_mod
   subroutine homme_postprocess_namelist(mesh_file, par)
     use mesh_mod,        only: MeshOpen
     use dimensions_mod,  only: ntrac, ne, ne_x, ne_y
-    use control_mod,     only: nu, nu_div, nu_p, nu_s, nu_q, rsplit, &
+    use control_mod,     only: nu, nu_div, nu_p, nu_s, nu_q, rsplit,qsplit, &
                                vert_remap_q_alg, vert_remap_u_alg
+    use control_mod,     only: dt_remap_factor, dt_tracer_factor, tstep_type
+    use control_mod,     only: integration, restartfile
     use physical_constants, only : scale_factor, scale_factor_inv, domain_size, laplacian_rigid_factor
 
 !!$    use control_mod,     only: dcmip16_mu, dcmip16_mu_s, dcmip16_mu_q
@@ -86,10 +88,49 @@ module namelist_mod
     ! Local variable
     character(len=*), parameter :: subname = 'HOMME_POSTPROCESS_NAMELIST: '
 
+#ifndef _USEMETIS
+    ! override METIS options to SFCURVE
+    if (partmethod>=0 .and. partmethod<=3) partmethod=SFCURVE
+#endif
+    ! ========================
+    ! if this is a restart run
+    ! ========================
+    if(runtype .eq. 1) then
+       write(iulog,*)"readnl: restartfile = ",restartfile
+    else if(runtype < 0) then
+       write(iulog,*)'readnl: runtype=', runtype,' interpolation mode '
+    endif
+
+
+    if((integration .ne. "explicit").and.(integration .ne. "runge_kutta").and. &
+         (integration .ne. "full_imp")) then
+       call abortmp('integration must be explicit, full_imp, or runge_kutta')
+    end if
+
+    if (integration == "full_imp") then
+       if (tstep_type<10) then
+          ! namelist did not set a valid tstep_type. pick one:
+          tstep_type=11   ! backward euler
+          !tstep_type=12  ! BDF2 with BE bootstrap
+       endif
+    endif
+
+    ierr = timestep_make_subcycle_parameters_consistent(par, rsplit, qsplit, &
+         dt_remap_factor, dt_tracer_factor)
+
+    if (tstep > 0) then
+       if (par%masterproc .and. nsplit > 0) then
+          write(iulog,'(a,i3,a)') &
+               'se_tstep and se_nsplit were specified; changing se_nsplit from ', &
+               nsplit, ' to -1.'
+       end if
+       nsplit = -1
+    end if
+
     ! set defautl for dynamics remap
     if (vert_remap_u_alg == -2) vert_remap_u_alg = vert_remap_q_alg
-    
-    ! more thread error checks:  
+
+    ! more thread error checks:
 #ifdef HORIZ_OPENMP
     if(par%masterproc) write(iulog,*)'-DHORIZ_OPENMP enabled'
 #else
@@ -121,7 +162,7 @@ module namelist_mod
     end if
     ! set map
     if (cubed_sphere_map<0) then
-#if ( defined MODEL_THETA_C || defined MODEL_THETA_L ) 
+#if ( defined MODEL_THETA_C || defined MODEL_THETA_L )
        cubed_sphere_map=2  ! theta model default = element local
 #else
        cubed_sphere_map=0  ! default is equi-angle gnomonic
@@ -156,13 +197,13 @@ module namelist_mod
     if(nu_s<0)    nu_s  = nu
     if(nu_q<0)    nu_q  = nu
     if(nu_div<0)  nu_div= nu
-    if(nu_p<0) then                                                                           
-       if (rsplit==0) then                                                                    
-          nu_p=0  ! eulerian code traditionally run with nu_p=0                               
-       else                                                                                   
-          nu_p=nu                                                                             
-       endif                                                                                  
-    endif 
+    if(nu_p<0) then
+       if (rsplit==0) then
+          nu_p=0  ! eulerian code traditionally run with nu_p=0
+       else
+          nu_p=nu
+       endif
+    endif
 !!$    if(dcmip16_mu_s<0)    dcmip16_mu_s  = dcmip16_mu
 !!$    if(dcmip16_mu_q<0)    dcmip16_mu_q  = dcmip16_mu_s
 

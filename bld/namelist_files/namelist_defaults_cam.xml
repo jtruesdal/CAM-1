@@ -328,7 +328,7 @@
 <use_topo_file analytic_ic="1"    > .false. </use_topo_file>
 
 <!-- Mesh files for refined SE grids -->
-<se_mesh_file> none </se_mesh_file>
+<se_mesh_file> "none" </se_mesh_file>
 <se_mesh_file hgrid="ne0np4CONUS.ne30x8"      >atm/cam/coords/ne0np4CONUS.ne30x8.g</se_mesh_file>
 <se_mesh_file hgrid="ne0np4TESTONLY.ne5x4"    >atm/cam/coords/ne0np4EQFACE.ne5x4.g</se_mesh_file>
 <se_mesh_file hgrid="ne0np4.ARCTIC.ne30x4"    >atm/cam/coords/ne30x4_EXODUS_ARCTIC_c191009.g</se_mesh_file>
@@ -2832,7 +2832,7 @@
 <se_hypervis_subcycle_q  se_dyn_target="theta-l"    > 6 </se_hypervis_subcycle_q>
 <se_hypervis_subcycle_tom  se_dyn_target="theta-l"  > 1 </se_hypervis_subcycle_tom>
 <se_integration  se_dyn_target="theta-l"            > 'explicit' </se_integration>
-<se_mesh_file  se_dyn_target="theta-l"              > 'dev/null' </se_mesh_file>
+<se_mesh_file  se_dyn_target="theta-l"              > '/dev/null' </se_mesh_file>
 <se_nu se_dyn_target="theta-l"                      >3.4e-8</se_nu>
 <se_nu_div   se_dyn_target="theta-l"                > -1 </se_nu_div>
 <se_nu_p   se_dyn_target="theta-l"                  > -1 </se_nu_p>
@@ -2950,8 +2950,8 @@
 <se_vert_num_threads> 0 </se_vert_num_threads>
 
 <se_cubed_sphere_map>         0 </se_cubed_sphere_map>
-<dt_remap_factor>         2 </dt_remap_factor>
-<dt_tracer_factor>        6 </dt_tracer_factor>
+<se_dt_remap_factor>         2 </se_dt_remap_factor>
+<se_dt_tracer_factor>        6 </se_dt_tracer_factor>
 
 
 <!-- ================================================================== -->

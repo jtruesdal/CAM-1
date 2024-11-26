@@ -81,7 +81,6 @@ subroutine stepon_init(dyn_in, dyn_out )
 ! !USES:
   use control_mod,            only: smooth_phis_numcycle
   use dimensions_mod,         only: nlev, nelemd, npsq
-  use dyn_grid,               only: fv_nphys
   use cam_history,            only: addfld, add_default, horiz_only
   use cam_history,            only: register_vector_field
   use gravity_waves_sources,  only: gws_init
@@ -257,8 +256,8 @@ end subroutine stepon_run1
 
 subroutine stepon_run2(phys_state, phys_tend, dyn_in, dyn_out )
    use bndry_mod,      only: bndry_exchangeV
-   use dimensions_mod,  only: nlev, nlevp, nelemd, np, npsq
-   use dyn_grid,        only: fv_nphys, TimeLevel, hvcoord
+   use dimensions_mod,  only: nlev, nlevp, nelemd, np, npsq, fv_nphys
+   use dyn_grid,        only: TimeLevel, hvcoord
    use dp_coupling,    only: p_d_coupling
    use parallel_mod,   only: par
    use time_mod,        only: tstep, TimeLevel_Qdp   !  dynamics typestep
@@ -587,7 +586,7 @@ subroutine stepon_run3(dtime, cam_out, phys_state, dyn_in, dyn_out)
 
    call t_barrierf('sync_dyn_run', mpicom)
    call t_startf ('dyn_run')
-   call dyn_run(dyn_out,rc)
+   call dyn_run(dyn_out)
    call t_stopf  ('dyn_run')
 
 !!$   if (dp_crm) then
@@ -654,7 +653,8 @@ end subroutine stepon_run3
 !
 ! !INTERFACE:
 subroutine stepon_final(dyn_in, dyn_out)
-  use dyn_grid,         only: fv_physgrid_final, fv_nphys
+  use dyn_grid,         only: fv_physgrid_final
+  use dimensions_mod,   only: fv_nphys
   use cam_logfile, only: iulog
   use prim_driver_mod,only: prim_finalize
 ! !PARAMETERS:
