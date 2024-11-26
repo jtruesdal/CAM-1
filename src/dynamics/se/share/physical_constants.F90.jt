@@ -1,0 +1,29 @@
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+!
+! This module should 'use' only module 'kinds'
+!
+module physical_constants
+
+  use shr_kind_mod,   only: r8 => shr_kind_r8
+  use physconst,      only shr_const_pi
+  private
+!!$  public ::  &
+!!$       QQ_PI, &
+!!$       DD_PI
+
+  ! physical constants inherited from CAM
+  real (r8), public, parameter :: DD_PI =       shr_const_pi         ! 3.14...
+  real (r16), public, parameter :: QQ_PI = 3.141592653589793238462643383279_r16
+  real (r8), public :: scale_factor, scale_factor_inv, domain_size, laplacian_rigid_factor
+  real (r8), public :: Lx = 0.0_r8
+  real (r8), public :: Ly = 0.0_r8
+  real (r8), public :: Sx = 0.0_r8
+  real (r8), public :: Sy = 0.0_r8
+  real (r8), public :: dx, dy, dx_ref, dy_ref
+
+  real (r8), public, parameter :: TREF = 288.0_r8
+
+end module physical_constants

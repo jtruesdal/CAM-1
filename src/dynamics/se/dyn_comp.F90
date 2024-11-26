@@ -155,6 +155,7 @@ subroutine dyn_readnl(NLFileName)
   real(r8)                     :: se_nu
   real(r8)                     :: se_nu_div
   real(r8)                     :: se_nu_p
+  real(r8)                     :: se_nu_s
   real(r8)                     :: se_nu_q
   real(r8)                     :: se_nu_top
   integer                      :: se_qsplit
@@ -190,6 +191,7 @@ subroutine dyn_readnl(NLFileName)
        se_nu,                   &
        se_nu_div,               &
        se_nu_p,                 &
+       se_nu_s,                 &
        se_nu_q,                 &
        se_nu_top,               &
        se_qsplit,               &
@@ -260,7 +262,62 @@ subroutine dyn_readnl(NLFileName)
     end if
     close(unitn)
     call freeunit(unitn)
+#ifndef _USEMETIS
+      ! override METIS options to SFCURVE
+      if (partmethod>=0 .and. partmethod<=3) partmethod=SFCURVE
+#endif
+       ! ========================
+       ! if this is a restart run
+       ! ========================
+       if(runtype .eq. 1) then
+          write(iulog,*)"readnl: restartfile = ",restartfile
+       else if(runtype < 0) then
+          write(iulog,*)'readnl: runtype=', runtype,' interpolation mode '
+       endif
+
+
+       if((integration .ne. "explicit").and.(integration .ne. "runge_kutta").and. &
+                    (integration .ne. "full_imp")) then
+          call abortmp('integration must be explicit, full_imp, or runge_kutta')
+       end if
+
+       if (integration == "full_imp") then
+          if (tstep_type<10) then
+             ! namelist did not set a valid tstep_type. pick one:
+             tstep_type=11   ! backward euler
+             !tstep_type=12  ! BDF2 with BE bootstrap
+          endif
+       endif
+
+       ierr = timestep_make_subcycle_parameters_consistent(par, rsplit, qsplit, &
+            dt_remap_factor, dt_tracer_factor)
+
+       limiter_option=se_limiter_option
+       partmethod = se_partmethod
+       ne         = se_ne
+       npes       = se_npes
+       ne_x       = se_ne_x
+       ne_y       = se_ne_y
+       Lx         = se_lx
+       Ly         = se_ly
+       topology   = se_topology
+       geometry   = se_geometry
+       qsize      = qsize_d
+       nsplit     = se_nsplit
+       tstep      = se_tstep
+       if (tstep > 0) then
+          if (par%masterproc .and. nsplit > 0) then
+             write(iulog,'(a,i3,a)') &
+                  'se_tstep and se_nsplit were specified; changing se_nsplit from ', &
+                  nsplit, ' to -1.'
+          end if
+          nsplit = -1
+       end if
   end if
+
+  call MPI_barrier(par%comm,ierr)
+
+  npart  = par%nprocs
 
   ! Broadcast namelist values to all PEs
 !jt  call MPI_bcast(se_fine_ne, 1, mpi_integer, masterprocid, mpicom, ierr)
@@ -279,6 +336,7 @@ subroutine dyn_readnl(NLFileName)
   call MPI_bcast(se_nu, 1, mpi_real8, masterprocid, mpicom, ierr)
   call MPI_bcast(se_nu_div, 1, mpi_real8, masterprocid, mpicom, ierr)
   call MPI_bcast(se_nu_p, 1, mpi_real8, masterprocid, mpicom, ierr)
+  call MPI_bcast(se_nu_s, 1, mpi_real8, masterprocid, mpicom, ierr)
   call MPI_bcast(se_nu_q, 1, mpi_real8, masterprocid, mpicom, ierr)
   call MPI_bcast(se_nu_top, 1, mpi_real8, masterprocid, mpicom, ierr)
   call MPI_bcast(se_qsplit, 1, mpi_integer, masterprocid, mpicom, ierr)
@@ -307,68 +365,6 @@ subroutine dyn_readnl(NLFileName)
 !jt initialize nh dycore
   par = initmp(se_npes)
 
-!!XXgoldyXX: v For future CSLAM/physgrid commit
-!    ! Next, read CSLAM nl
-!    se_tracer_transport_method = 'se_gll'
-!    se_cslam_ideal_test = 'off'
-!    se_cslam_test_type = 'boomerang'
-!    if (masterproc) then
-!      write(iulog, *) "dyn_readnl: reading CSLAM namelist..."
-!      unitn = getunit()
-!      open( unitn, file=trim(NLFileName), status='old' )
-!      call find_group_name(unitn, 'cslam_nl', status=ierr)
-!      if (ierr == 0) then
-!        read(unitn, cslam_nl, iostat=ierr)
-!        if (ierr /= 0) then
-!          call endrun('dyn_readnl: ERROR reading cslam namelist')
-!        end if
-!      end if
-!      close(unitn)
-!      call freeunit(unitn)
-
-!      ! Set and broadcast tracer transport type
-!      if (trim(se_tracer_transport_method) == 'se_gll') then
-!        tracer_transport_type = TRACERTRANSPORT_SE_GLL
-!        tracer_grid_type = TRACER_GRIDTYPE_GLL
-!#ifdef FVM_TRACERS
-!      else if (trim(se_tracer_transport_method) == 'cslam_fvm') then
-!        tracer_transport_type = TRACERTRANSPORT_LAGRANGIAN_FVM
-!        tracer_grid_type = TRACER_GRIDTYPE_FVM
-!      else if (trim(se_tracer_transport_method) == 'flux_form_cslam_fvm') then
-!        tracer_transport_type = TRACERTRANSPORT_FLUXFORM_FVM
-!        tracer_grid_type = TRACER_GRIDTYPE_FVM
-!#endif
-!      else
-!        call endrun('Unknown tracer transport method: '//trim(se_tracer_transport_method))
-!      end if
-
-!      ! Set and broadcast CSLAM options
-!      call fvm_get_test_type(se_cslam_ideal_test, cslam_test_type, fvm_ideal_test, fvm_test_type)
-!    end if
-!#ifdef SPMD
-!    ! Broadcast namelist variables
-!    call MPI_bcast(se_tracer_transport_type,1,mpi_integer,masterprocid,mpicom,ierr)
-!    call MPI_bcast(tracer_grid_type,1,mpi_integer,masterprocid,mpicom,ierr)
-!    call MPI_bcast(fvm_ideal_test,1,mpi_integer,masterprocid,mpicom,ierr)
-!    call MPI_bcast(fvm_test_type,1,mpi_integer,masterprocid,mpicom,ierr)
-!#endif
-
-!    ! Set and broadcast tracer transport type
-!    if (tracer_transport_type == TRACERTRANSPORT_SE_GLL) then
-!      qsize = pcnst
-!      ntrac = 0
-!    else if (tracer_transport_type == TRACERTRANSPORT_LAGRANGIAN_FVM) then
-!!phl      qsize = 1
-!      qsize = pcnst !add phl
-!      ntrac = pcnst
-!    else if (tracer_transport_type == TRACERTRANSPORT_FLUXFORM_FVM) then
-!      qsize = 1
-!      qsize = pcnst !add phl
-!      ntrac = pcnst
-!    else
-!      call endrun('Unknown tracer transport type')
-!    end if
-!!XXgoldyXX: ^ For future physgrid commit
 
   ! Fix up unresolved default values
   ! default diffusion coefficiets
@@ -413,7 +409,8 @@ subroutine dyn_readnl(NLFileName)
    nu                       = se_nu
    nu_div                   = se_nu_div
    nu_p                     = se_nu_p
-   nu_q                     = se_nu_p !for tracer-wind consistency nu_q must me equal to nu_p
+   nu_s                     = se_nu_s
+   nu_q                     = se_nu_q !for tracer-wind consistency nu_q must me equal to nu_p
    nu_top                   = se_nu_top
 !!$   sponge_del4_nu_fac       = se_sponge_del4_nu_fac
 !!$   sponge_del4_nu_div_fac   = se_sponge_del4_nu_div_fac
@@ -479,6 +476,7 @@ subroutine dyn_readnl(NLFileName)
     write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu = ',se_nu
     write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu_div = ',se_nu_div
     write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu_p = ',se_nu_p
+    write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu_s = ',se_nu_s
     write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu_q = ',se_nu_q
     write(iulog, '(a,e9.2)') 'dyn_readnl: se_nu_top = ',se_nu_top
     write(iulog, '(a,i0)') 'dyn_readnl: se_qsplit = ',se_qsplit
