@@ -192,10 +192,10 @@ fxDONOTUSEurl = https://github.com/ESCOMP/CESM_CICE
 
 [submodule "clm"]
 path = components/clm
-url = https://github.com/ESCOMP/CTSM
-fxtag = ctsm5.3.002
+url = https://github.com/jtruesdal/ctsm
+fxtag = ctsm5.3.009_scam.01
 fxrequired = ToplevelRequired
-fxDONOTUSEurl = https://github.com/ESCOMP/CTSM
+fxDONOTUSEurl = https://github.com/jtruesdal/ctsm
 
 [submodule "fms"]
 path = libraries/FMS
