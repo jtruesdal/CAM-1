@@ -73,11 +73,14 @@ module namelist_mod
   subroutine homme_postprocess_namelist(mesh_file, par)
     use mesh_mod,        only: MeshOpen
     use dimensions_mod,  only: ntrac, ne, ne_x, ne_y
+    use time_mod,        only: tstep, nsplit
     use control_mod,     only: nu, nu_div, nu_p, nu_s, nu_q, rsplit,qsplit, &
                                vert_remap_q_alg, vert_remap_u_alg
-    use control_mod,     only: dt_remap_factor, dt_tracer_factor, tstep_type
-    use control_mod,     only: integration, restartfile
-    use physical_constants, only : scale_factor, scale_factor_inv, domain_size, laplacian_rigid_factor
+    use control_mod,     only: dt_remap_factor, dt_tracer_factor, tstep_type, rsplit, qsplit
+    use control_mod,     only: integration, restartfile,timestep_make_subcycle_parameters_consistent, &
+                               hypervis_subcycle_q, transport_alg, limiter_option, prescribed_wind
+    use physical_constants, only : scale_factor, scale_factor_inv, domain_size, laplacian_rigid_factor, &
+                                   dd_pi, rrearth, rearth
 
 !!$    use control_mod,     only: dcmip16_mu, dcmip16_mu_s, dcmip16_mu_q
 
@@ -87,7 +90,7 @@ module namelist_mod
 
     ! Local variable
     character(len=*), parameter :: subname = 'HOMME_POSTPROCESS_NAMELIST: '
-
+    integer                     :: ierr
 #ifndef _USEMETIS
     ! override METIS options to SFCURVE
     if (partmethod>=0 .and. partmethod<=3) partmethod=SFCURVE

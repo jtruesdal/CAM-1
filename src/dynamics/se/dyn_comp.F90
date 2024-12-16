@@ -59,7 +59,6 @@ type dyn_export_t
    type (element_t), pointer :: elem(:) => null()
 end type dyn_export_t
 
-character(*), parameter, public :: MODULE_NAME
 character(*), parameter, public :: VERSION     = "$Id$"
 
 ! Frontogenesis indices
@@ -1220,8 +1219,6 @@ subroutine read_inidat(dyn_in)
       end if
 
       ! Cleanup
-      deallocate(dbuf2)
-      deallocate(dbuf3)
 
    allocate(dbuf3(npsq,nlev,nelemd))
 

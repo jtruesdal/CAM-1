@@ -1835,7 +1835,7 @@ if ($spcam_ny eq 1) {$yes3Dval = 0;}  #Turn off if not using 3D
 if ($phys_pkg eq 'spcam_m2005' or $phys_pkg eq 'spcam_sam1mom') {
     $cfg_cppdefs .= " -DSPCAM_NX=$spcam_nx -DSPCAM_NY=$spcam_ny -DSPCAM_NZ=$spcam_nz -DSPCAM_DX=$spcam_dx -DSPCAM_DT=$spcam_dt -DYES3DVAL=$yes3Dval -DCRM ";
     if ( $spcam_clubb_sgs == 1 )    {
-        $cfg_cppdefs .= "-DSPCAM_CLUBB_SGS -DCLUBB_CRM -DCLUBB_REAL_TYPE=dp -DCLUBB_SAM";  ## -DNO_LAPACK_ISNAN";
+        $cfg_cppdefs .= " -DSPCAM_CLUBB_SGS -DCLUBB_CRM -DCLUBB_REAL_TYPE=dp -DCLUBB_SAM";  ## -DNO_LAPACK_ISNAN";
     }
 }
 
@@ -1918,7 +1918,7 @@ if ($dyn_pkg eq 'se') {
 	}
 
 	if ($spmd eq 'ON') {
-	    $cfg_cppdefs .= "-DHAVE_MPI -D_MPI";
+	    $cfg_cppdefs .= " -DHAVE_MPI -D_MPI";
 	}
 
 	$cfg_cppdefs .= " -D_PRIM";

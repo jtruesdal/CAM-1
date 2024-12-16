@@ -314,6 +314,8 @@ module cam_grid_support
   public     :: cam_grid_is_zonal
   ! Functions for dealing with patch masks
   public     :: cam_grid_compute_patch
+  ! Functions for dealing with grid areas
+  public     :: cam_grid_get_areawt
 
   interface cam_grid_attribute_register
     module procedure add_cam_grid_attribute_0d_int
@@ -1714,6 +1716,58 @@ contains
 
   end subroutine cam_grid_compute_patch
 
+  function cam_grid_get_areawt(id) result(wtvals)
+
+    ! Dummy argument
+    integer,                  intent(in)       :: id
+    real(r8), pointer                          :: wtvals(:)
+
+    ! Local variables
+    character(len=max_chars)                   :: wtname
+    integer                                    :: gridind
+    class(cam_grid_attribute_t),      pointer  :: attrptr
+    character(len=120)                         :: errormsg
+
+    nullify(attrptr)
+    gridind = get_cam_grid_index(id)
+    if (gridind > 0) then
+       select case(trim(cam_grids(gridind)%name))
+       case('GLL')
+          wtname='area_weight_gll'
+       case('EUL')
+          wtname='gw'
+       case('FV')
+          wtname='gw'
+       case('INI')
+          wtname='area_weight_ini'
+       case('physgrid')
+          wtname='areawt'
+       case('FVM')
+          wtname='area_weight_fvm'
+       case('mpas_cell')
+          wtname='area_weight_mpas'
+       case default
+          call endrun('cam_grid_get_areawt: Invalid gridname:'//trim(cam_grids(gridind)%name))
+       end select
+
+       call find_cam_grid_attr(gridind, trim(wtname), attrptr)
+       if (.not.associated(attrptr)) then
+          write(errormsg, '(4a)')                                               &
+               'cam_grid_get_areawt: error retrieving weight attribute ', trim(wtname),         &
+               ' for cam grid ', cam_grids(gridind)%name
+          call endrun(errormsg)
+       else
+          call attrptr%print_attr()
+          select type(attrptr)
+          type is (cam_grid_attribute_1d_r8_t)
+             wtvals => attrptr%values
+          class default
+             call endrun('cam_grid_get_areawt: wt attribute is not a real datatype')
+          end select
+       end if
+    end if
+
+  end function cam_grid_get_areawt
 !!#######################################################################
 !!
 !! CAM grid attribute functions

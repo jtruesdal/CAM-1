@@ -28,7 +28,7 @@ module dyn_grid
 
 use shr_kind_mod,           only: r8 => shr_kind_r8, shr_kind_cl
 use spmd_utils,             only: masterproc, iam, mpicom, mstrid=>masterprocid
-use spmd_utils,             only: npes, mpi_integer, mpi_real8, mpi_success
+use spmd_utils,             only: npes, mpi_integer, mpi_real8, mpi_success, mpi_max
 use constituents,           only: pcnst
 use physconst,              only: pi
 use cam_initfiles,          only: initial_file_get_id
@@ -56,7 +56,9 @@ private
 save
 
 integer, parameter :: dyn_decomp = 101 ! The SE dynamics grid
-integer, parameter, public :: physgrid_d = 102
+!jtinteger, parameter :: fvm_decomp = 102 ! The FVM (CSLAM) grid
+integer, parameter :: physgrid_d = 103 ! physics grid on dynamics decomp
+integer, parameter :: ini_decomp = 104 ! alternate dynamics grid for reading initial file
 
 character(len=3), protected :: ini_grid_name
 
@@ -95,9 +97,10 @@ public :: dyn_grid_get_elem_coords
 public :: dyn_grid_get_colndx
 public :: fv_physgrid_init, fv_physgrid_final
 
-integer(kind=iMap), pointer :: fdofP_local(:,:) => null()
-
+! number of global dynamics columns. Set by SE dycore init.
 integer :: ngcols_d = 0     ! number of dynamics columns
+! number of global elements. Set by SE dycore init.
+integer :: nelem_d = 0
 
 real(r8), parameter :: rad2deg = 180.0_r8 / pi
 
@@ -139,6 +142,8 @@ subroutine dyn_grid_init()
 
    character(len=*), parameter :: sub = 'dyn_grid_init'
    !----------------------------------------------------------------------------
+
+   dtime = get_step_size()
 
    ! Get file handle for initial file and first consistency check
    fh_ini => initial_file_get_id()
@@ -204,11 +209,21 @@ subroutine dyn_grid_init()
       neltmp(2) = nelem
       neltmp(3) = globaluniquecols
    else
+      globaluniquecols = 0
       nelemd = 0
       neltmp(1) = 0
       neltmp(2) = 0
       neltmp(3) = 0
    endif
+
+   ! nelemdmax is computed on the dycore comm, we need it globally.
+   ngcols_d = nelemdmax
+   call MPI_Allreduce(ngcols_d, nelemdmax, 1, MPI_INTEGER, MPI_MAX, mpicom, ierr)
+   ! All pes might not have the correct global grid size
+   call MPI_Allreduce(globaluniquecols, ngcols_d, 1, MPI_INTEGER, MPI_MAX, mpicom, ierr)
+   ! All pes might not have the correct number of elements
+   call MPI_Allreduce(nelem, nelem_d, 1, MPI_INTEGER, MPI_MAX, mpicom, ierr)
+
 
    if (par%nprocs .lt. npes) then
 
@@ -526,8 +541,7 @@ subroutine get_dyn_grid_info(hdim1_d, hdim2_d, num_lev,                       &
     character(len=16)            :: gridname, latname, lonname, ncolname, areaname
     type(horiz_coord_t), pointer :: lat_coord
     type(horiz_coord_t), pointer :: lon_coord
-    integer(iMap),       pointer :: grid_map_d(:,:)
-    integer(iMap),       pointer :: grid_map_p(:,:)
+    integer(iMap),       pointer :: grid_map(:,:)
     integer                      :: ie, i, j, k, mapind ! Loop variables
     real(r8)                     :: area_scm(1), lat, lon
     integer                      :: ncols_p_lcl         ! local column count
@@ -538,27 +552,12 @@ subroutine get_dyn_grid_info(hdim1_d, hdim2_d, num_lev,                       &
     real(r8),        allocatable :: physgrid_lon(:)
     real(r8),        allocatable :: pelat_deg(:)  ! pe-local latitudes (degrees)
     real(r8),        allocatable :: pelon_deg(:)  ! pe-local longitudes (degrees)
-    integer(iMap),   allocatable :: pemap(:)                 ! pe-local map for PIO decomp
     real(r8),        pointer     :: pearea(:) => null()  ! pe-local areas
     real(r8)                     :: areaw(np,np)
     integer                      :: ii,jj
-    !---------------------------------------------------------------------------
-    ! Create grid for data on HOMME GLL nodes
-    !---------------------------------------------------------------------------
-    ! When the FV phys grid is used the GLL grid output
-    ! variables will use coordinates with the '_d' suffix.
-    gridname = 'GLL'
-    if (fv_nphys > 0) then
-      latname  = 'lat_d'
-      lonname  = 'lon_d'
-      ncolname = 'ncol_d'
-      areaname = 'area_d'
-    else
-      latname  = 'lat'
-      lonname  = 'lon'
-      ncolname = 'ncol'
-      areaname = 'area'
-    end if
+    integer(iMap)                :: fdofP_local(npsq,nelemd) ! pe-local map for dynamics decomp
+    integer(iMap),   allocatable :: pemap(:)                 ! pe-local map for PIO decomp
+
 
     !-----------------------
     ! Create GLL grid object
@@ -573,6 +572,7 @@ subroutine get_dyn_grid_info(hdim1_d, hdim2_d, num_lev,                       &
           fdofp_local((np*(j-1))+i,ie) = elem(ie)%idxP%UniquePtoffset + ii - 1
        end do
     end do
+
 
     allocate(pelat_deg(np*np*nelemd))
     allocate(pelon_deg(np*np*nelemd))
@@ -594,57 +594,81 @@ subroutine get_dyn_grid_info(hdim1_d, hdim2_d, num_lev,                       &
        end do
     end do
 
-    lat_coord => horiz_coord_create(trim(latname), trim(ncolname), ngcols_d,  &
-                                    'latitude', 'degrees_north', 1,           &
-                                    size(pelat_deg), pelat_deg, map=pemap)
-    lon_coord => horiz_coord_create(trim(lonname), trim(ncolname), ngcols_d,  &
-                                    'longitude', 'degrees_east', 1,           &
-                                    size(pelon_deg), pelon_deg, map=pemap)
+   ! If using the physics grid then the GLL grid will use the names with
+   ! '_d' suffixes and the physics grid will use the unadorned names.
+   ! This allows fields on both the GLL and physics grids to be written to history
+   ! output files.
+   if (trim(ini_grid_hdim_name) == 'ncol_d') then
+      latname  = 'lat_d'
+      lonname  = 'lon_d'
+      ncolname = 'ncol_d'
+      areaname = 'area_d'
+   else
+      latname  = 'lat'
+      lonname  = 'lon'
+      ncolname = 'ncol'
+      areaname = 'area'
+   end if
+   lat_coord => horiz_coord_create('lat_d', 'ncol_d', ngcols_d,  &
+         'latitude', 'degrees_north', 1, size(pelat_deg), pelat_deg, map=pemap)
+   lon_coord => horiz_coord_create('lon_d', 'ncol_d', ngcols_d,  &
+         'longitude', 'degrees_east', 1, size(pelon_deg), pelon_deg, map=pemap)
 
-    ! Map for dynamics GLL grid
-    allocate(grid_map_d(3, SIZE(fdofP_local)))
-    grid_map_d = 0
-    mapind = 1
-    do j = LBOUND(fdofP_local, 2), UBOUND(fdofP_local, 2) ! should be 1, nelemd
-      do i = LBOUND(fdofP_local, 1), UBOUND(fdofP_local, 1) ! should be 1,npsq
-        grid_map_d(1, mapind) = i
-        grid_map_d(2, mapind) = j
-        grid_map_d(3, mapind) = fdofP_local(i, j)
-        mapind = mapind + 1
+   ! Map for GLL grid
+   allocate(grid_map(3,npsq*nelemd))
+   grid_map = 0_iMap
+   mapind = 1
+   do j = 1, nelemd
+      do i = 1, npsq
+         grid_map(1, mapind) = i
+         grid_map(2, mapind) = j
+         grid_map(3, mapind) = pemap(mapind)
+         mapind = mapind + 1
       end do
-    end do
+   end do
 
-    ! The native HOMME GLL grid
-    call cam_grid_register(trim(gridname), dyn_decomp, lat_coord, lon_coord,  &
-                           grid_map_d,block_indexed=.false., unstruct=.true.)
-!jt    if (.not.single_column .or. scm_multcols) then
-      call cam_grid_attribute_register(trim(gridname), trim(areaname),   &
-                                'gll grid areas', trim(ncolname), pearea, pemap)
-!jt    else
-!jt      ! if single column model, then this attribute has to be handled
-!jt      ! by assigning just the SCM point. Else, the model will bomb out
-!jt      ! when writing the header information to history output
-!jt      area_scm(1) = 1.0_r8 / elem(1)%rspheremp(1,1)
-!jt      call cam_grid_attribute_register(trim(gridname), trim(areaname),   &
-!jt                                    'gll grid areas', trim(ncolname), area_scm)
-!jt    end if ! .not. single_column
+   ! The native SE GLL grid
+   call cam_grid_register('GLL', dyn_decomp, lat_coord, lon_coord,           &
+         grid_map, block_indexed=.false., unstruct=.true.)
+   call cam_grid_attribute_register('GLL', 'area_d', 'gll grid areas', &
+         'ncol_d', pearea, map=pemap)
+   call cam_grid_attribute_register('GLL', 'np', '', np)
+   call cam_grid_attribute_register('GLL', 'ne', '', ne)
 
-    call cam_grid_attribute_register(trim(gridname), 'np', '', np)
-    call cam_grid_attribute_register(trim(gridname), 'ne', '', ne)
+   ! If dim name is 'ncol', create INI grid
+   ! We will read from INI grid, but use GLL grid for all output
+   if (trim(ini_grid_hdim_name) == 'ncol') then
 
-    ! Coordinate values and maps are copied into the coordinate and attribute objects.
-    ! Locally allocated storage is no longer needed.
-    deallocate(pelat_deg)
-    deallocate(pelon_deg)
-    deallocate(pemap)
+      lat_coord => horiz_coord_create('lat', 'ncol', ngcols_d,  &
+         'latitude', 'degrees_north', 1, size(pelat_deg), pelat_deg, map=pemap)
+      lon_coord => horiz_coord_create('lon', 'ncol', ngcols_d,  &
+         'longitude', 'degrees_east', 1, size(pelon_deg), pelon_deg, map=pemap)
 
-    ! pearea cannot be deallocated as the attribute object is just pointing
-    ! to that memory.  It can be nullified since the attribute object has
-    ! the reference.
-    nullify(pearea)
-    ! grid_map cannot be deallocated as the cam_filemap_t object just points
-    ! to it.  It can be nullified.
-    nullify(grid_map_d)
+      call cam_grid_register('INI', ini_decomp, lat_coord, lon_coord,         &
+         grid_map, block_indexed=.false., unstruct=.true.)
+      call cam_grid_attribute_register('INI', 'area', 'ini grid areas', &
+               'ncol', pearea, map=pemap)
+
+      ini_grid_name = 'INI'
+   else
+      ! The dyn_decomp grid can be used to read the initial file.
+      ini_grid_name = 'GLL'
+   end if
+
+   ! Coordinate values and maps are copied into the coordinate and attribute objects.
+   ! Locally allocated storage is no longer needed.
+   deallocate(pelat_deg)
+   deallocate(pelon_deg)
+   deallocate(pemap)
+
+   ! pearea cannot be deallocated as the attribute object is just pointing
+   ! to that memory.  It can be nullified since the attribute object has
+   ! the reference.
+   nullify(pearea)
+
+   ! grid_map cannot be deallocated as the cam_filemap_t object just points
+   ! to it.  It can be nullified.
+   nullify(grid_map)
 
     !---------------------------------------------------------------------------
     ! Create grid object for physics grid on the dynamics decomposition
@@ -694,21 +718,21 @@ subroutine get_dyn_grid_info(hdim1_d, hdim2_d, num_lev,                       &
                                       ncols_p_lcl,physgrid_lon,map=physgrid_map)
 
       ! Map for physics grid
-      allocate(grid_map_p(3, ncols_p_lcl))
-      grid_map_p = 0_iMap
+      allocate(grid_map(3, ncols_p_lcl))
+      grid_map = 0_iMap
       mapind = 1
       do j = 1, nelemd
         do i = 1, fv_nphys*fv_nphys
-          grid_map_p(1,mapind) = i
-          grid_map_p(2,mapind) = j
-          grid_map_p(3,mapind) = physgrid_map(mapind)
+          grid_map(1,mapind) = i
+          grid_map(2,mapind) = j
+          grid_map(3,mapind) = physgrid_map(mapind)
           mapind = mapind + 1
         end do ! i
       end do ! j
 
       ! create physics grid object
       call cam_grid_register(trim(gridname), physgrid_d, lat_coord, lon_coord, &
-                             grid_map_p, block_indexed=.false., unstruct=.true.)
+                             grid_map, block_indexed=.false., unstruct=.true.)
       call cam_grid_attribute_register(trim(gridname), trim(areaname),         &
                                        'physics grid areas', trim(ncolname),   &
                                        physgrid_area, map=physgrid_map)
@@ -719,7 +743,7 @@ subroutine get_dyn_grid_info(hdim1_d, hdim2_d, num_lev,                       &
       deallocate(physgrid_lon)
       nullify(physgrid_area)
       nullify(physgrid_map)
-      nullify(grid_map_p)
+      nullify(grid_map)
 
     end if ! fv_nphys>0
     !---------------------------------------------------------------------------
@@ -738,16 +762,14 @@ subroutine get_dyn_grid_info(hdim1_d, hdim2_d, num_lev,                       &
     !---------------------------------------------------------------------------
     if (fv_nphys > 0) then
       gridname = 'physgrid_d'
-      allocate(grid_attribute_names(3))
-      grid_attribute_names(1) = 'area'
-      grid_attribute_names(2) = 'fv_nphys'
-      grid_attribute_names(3) = 'ne'
+      allocate(grid_attribute_names(2))
+      grid_attribute_names(1) = 'fv_nphys'
+      grid_attribute_names(2) = 'ne'
     else
       gridname = 'GLL'
-      allocate(grid_attribute_names(3))
-      grid_attribute_names(1) = 'area'
-      grid_attribute_names(2) = 'np'
-      grid_attribute_names(3) = 'ne'
+      allocate(grid_attribute_names(2))
+      grid_attribute_names(1) = 'np'
+      grid_attribute_names(2) = 'ne'
     end if ! fv_nphys > 0
 
   end subroutine physgrid_copy_attributes_d
