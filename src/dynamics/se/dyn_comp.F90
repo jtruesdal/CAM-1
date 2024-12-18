@@ -1129,6 +1129,10 @@ subroutine read_inidat(dyn_in)
 !jt      indx_scm = 1
 !jt    endif
 
+      ! Read ICs from file.  Assume all fields in the initial file are on the GLL grid.
+
+      allocate(dbuf3(npsq,nlev,nelemd))
+
       ! Read in 3-D fields
 
       if (dyn_field_exists(fh_ini, 'U')) then
@@ -1220,8 +1224,6 @@ subroutine read_inidat(dyn_in)
 
       ! Cleanup
 
-   allocate(dbuf3(npsq,nlev,nelemd))
-
    do m_cnst = 1, pcnst
 
       if (analytic_ic_active() .and. cnst_is_a_water_species(cnst_name(m_cnst))) cycle
@@ -1264,7 +1266,7 @@ subroutine read_inidat(dyn_in)
    call pio_seterrorhandling(fh_ini, pio_errtype)
 
    ! Cleanup
-   deallocate(pmask)
+!jt   deallocate(pmask)
    deallocate(latvals)
    deallocate(lonvals)
 

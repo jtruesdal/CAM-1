@@ -572,6 +572,7 @@ contains
       integer          , intent(in) :: hthreads
       type (hybrid_t)               :: hybrid
 
+
       if( hthreads==1) then
          hybrid = config_thread_region(hybrid,'serial')
          hybrid%hthreads = 1
@@ -579,6 +580,11 @@ contains
          hybrid = config_thread_region(hybrid,'horizontal')
          hybrid%hthreads = hthreads
       end if
+
+      hybrid%par      = par
+      hybrid%ithr     = ithr
+      hybrid%masterthread = (par%masterproc .and. ithr==0)
+
 
   end function hybrid_create
 

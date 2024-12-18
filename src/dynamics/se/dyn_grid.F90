@@ -47,7 +47,7 @@ use domain_mod,             only: domain1d_t
 use dimensions_mod,         only: globaluniquecols, nelem, nelemd, nelemdmax
 use dimensions_mod,         only: ne, np, npsq, fv_nphys, nlev, ntrac
 use element_mod,            only: element_t
-use hybvcoord_mod,          only: hvcoord_t
+use hybvcoord_mod,          only: hvcoord_t, set_layer_locations
 use prim_driver_mod,        only: prim_init1
 use time_mod,               only: TimeLevel_t
 
@@ -169,7 +169,7 @@ subroutine dyn_grid_init()
    do k=1,nlev
       hvcoord%hybd(k) = hvcoord%hybi(k+1) - hvcoord%hybi(k)
    end do
-
+   call set_layer_locations(hvcoord, .false., par%masterproc)
    ! Initialize reference pressures
    call ref_pres_init(hypi, hypm, nprlev)
 

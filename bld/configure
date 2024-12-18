@@ -2277,7 +2277,7 @@ sub write_filepath
            print $fh "$camsrcdir/src/physics/spcam/crm/SGS_TKE\n";
         }
     }
-
+    my $KOKKOSROOT = "$ENV{'Kokkos_ROOT'}";
     # This directory contains much of the code for physics packages,
     # as well as the cam specific interface modules that may need to
     # be overridden by modules from directories that occur earlier
@@ -2295,17 +2295,15 @@ sub write_filepath
        print $fh "$camsrcdir/src/dynamics/se/preqx\n";
        print $fh "$camsrcdir/src/dynamics/se/preqx/share\n";
     }
-#	print $fh "/project/amp/jet/install_izumi/spack/opt/spack/linux-centos7-skylake_avx512/gcc-12.3.0/kokkos-4.2.01-7bsbltonkz5ixvsjpr7twwlevodidgzp/include\n";
     if($se_dyn_target eq 'theta-l') {
-	print $fh "/project/amp/jet/install_izumi/spack/opt/spack/linux-centos7-skylake_avx512/gcc-9.3.0/kokkos-3.0.00-tpagtvhhfbk4no5w6a6hp4lotq7ebu5g/include\n";
+	print $fh "$KOKKOSROOT/include\n";
 	print $fh "$camsrcdir/src/dynamics/se/share\n";
 	print $fh "$camsrcdir/src/dynamics/se/share/compose\n";
 	print $fh "$camsrcdir/src/dynamics/se/theta-l\n";
 	print $fh "$camsrcdir/src/dynamics/se/theta-l/share\n";
     }
-#        print $fh "/project/amp/jet/install_izumi/spack/opt/spack/linux-centos7-skylake_avx512/gcc-12.3.0/kokkos-4.2.01-7bsbltonkz5ixvsjpr7twwlevodidgzp/include\n";
     if ($se_dyn_target eq 'theta-l_kokkos') {
-	print $fh "/project/amp/jet/install_izumi/spack/opt/spack/linux-centos7-skylake_avx512/gcc-9.3.0/kokkos-3.0.00-tpagtvhhfbk4no5w6a6hp4lotq7ebu5g/include\n";
+	print $fh "$KOKKOSROOT/include\n";
 	print $fh "$camsrcdir/src/dynamics/se/share\n";
         print $fh "$camsrcdir/src/dynamics/se/share/cxx\n";
         print $fh "$camsrcdir/src/dynamics/se/share/cxx/mpi\n";
