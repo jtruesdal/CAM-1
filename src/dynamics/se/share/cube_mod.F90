@@ -461,7 +461,11 @@ contains
     elem%D = elem%D * sqrt(alpha)
     elem%Dinv = elem%Dinv / sqrt(alpha)
     elem%metdet = elem%metdet * alpha
-    elem%rmetdet = elem%rmetdet / alpha
+    ! elem%rmetdet = elem%rmetdet / alpha
+    ! replace "elem%rmetdet = elem%rmetdet / alpha" with the one below,
+    ! to ensure that elem%rmetdet = 1/elem%metdet
+    ! elem%rmetdet = elem%rmetdet / alpha
+    elem%rmetdet = 1.0D0/elem%metdet
     elem%met = elem%met * alpha
     elem%metinv = elem%metinv / alpha
 
