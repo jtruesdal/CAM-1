@@ -3017,8 +3017,8 @@
 <co2vmr                                               scam_iop="arm95"     > 368.9e-6  </co2vmr>
 
 <!-- IOP ARM97/ARM Southern Great Plains/lat:36/lon:263/Jun 1997/30d/M. Zhang et al. (2016) Land convection -->
-<ncdata             hgrid="ne3np4"    nlev="32"       scam_iop="arm95"     >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-06-01-00000.nc</ncdata>
-<ncdata             hgrid="64x128"    nlev="32"       scam_iop="arm95"     >atm/cam/inic/gaus/CESM2.F2000climo.64x128.cam.i.0003-06-01-00000.nc</ncdata>
+<ncdata             hgrid="ne3np4"    nlev="32"       scam_iop="arm97"     >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-06-01-00000.nc</ncdata>
+<ncdata             hgrid="64x128"    nlev="32"       scam_iop="arm97"     >atm/cam/inic/gaus/CESM2.F2000climo.64x128.cam.i.0003-06-01-00000.nc</ncdata>
 <iopfile                                              scam_iop="arm97"     >atm/cam/scam/iop/ARM97_4scam.nc</iopfile>
 <co2vmr                                               scam_iop="arm97"     > 368.9e-6  </co2vmr>
 
@@ -3059,7 +3059,7 @@
 
 <!-- IOP GATEIII/GARP Atlantic Tropical Experiment Phase III/lat:9/lon:336/Aug 1974/20d/Thompson et al.(1979) Tropical convection -->
 <ncdata             hgrid="ne3np4"    nlev="32"       scam_iop="gateiii"   >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-08-01-00000.nc</ncdata>
-<ncdata             hgrid="64x128"    nlev="32"       scam_iop="gateIII"   >atm/cam/inic/gaus/CESM2.F2000climo.64x128.cam.i.0003-08-01-00000.nc</ncdata>
+<ncdata             hgrid="64x128"    nlev="32"       scam_iop="gateiii"   >atm/cam/inic/gaus/CESM2.F2000climo.64x128.cam.i.0003-08-01-00000.nc</ncdata>
 <iopfile                                              scam_iop="gateiii"   >atm/cam/scam/iop/GATEIII_4scam_c170809.nc</iopfile>
 
 <!-- IOP MICRE/Macquarie Island Cloud Radiation Experiment/lat:-56/lon:141/2017/90d/Marchand R. 2020/Marine -->
@@ -3103,9 +3103,9 @@
 <iopfile                                              scam_iop="sparticus" >atm/cam/scam/iop/SPARTICUS_4scam.nc</iopfile>
 
 <!-- IOP TOGAII/Tropical Ocean Global Atmosphere IOP2/lat:-2/lon:154/Dec 1992/21d/Webster and Lukas (1992)/Tropical convection -->
-<ncdata             hgrid="ne3np4"    nlev="32"       scam_iop="togaII" >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-12-01-00000.nc</ncdata>
-<ncdata             hgrid="64x128"    nlev="32"       scam_iop="togaII" >atm/cam/inic/gaus/CESM2.F2000climo.64x128.cam.i.0003-12-01-00000.nc</ncdata>
-<iopfile                                              scam_iop="togaII" >atm/cam/scam/iop/TOGAII_4scam.nc</iopfile>
+<ncdata             hgrid="ne3np4"    nlev="32"       scam_iop="togaii" >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-12-01-00000.nc</ncdata>
+<ncdata             hgrid="64x128"    nlev="32"       scam_iop="togaii" >atm/cam/inic/gaus/CESM2.F2000climo.64x128.cam.i.0003-12-01-00000.nc</ncdata>
+<iopfile                                              scam_iop="togaii" >atm/cam/scam/iop/TOGAII_4scam.nc</iopfile>
 
 <!-- IOP TWP06/Tropical W. Pacific Convection/lat:-12/lon:131/Jan 2006/26d/May et al. (2008)/Tropical convection -->
 <ncdata             hgrid="ne3np4"    nlev="32"       scam_iop="twp06" >atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-01-01-00000.nc</ncdata>

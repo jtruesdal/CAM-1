@@ -2204,6 +2204,16 @@
       <machine name="derecho" compiler="pgi" category="fv3_cam"/>
     </machines>
   </test>
+  <test compset="F2000climoSROF" grid="ne3_ne3_mg37" name="SCT_D_Ln7" testmods="cam/scm_prep_c6">
+    <machines>
+      <machine name="izumi" compiler="gnu" category="aux_cam"/>
+      <machine name="izumi" compiler="gnu" category="test_scam"/>
+    </machines>
+    <options>
+      <option name="comment" >Spectral Element SCAM BFB warm start land test w GNU</option>
+      <option name="wallclock">00:30:00</option>
+    </options>
+  </test>
 <!--              @@@@@@@@@@@@@@@@@@@@@@                 -->
 <!--             WACCM COMPSETS                 -->
 <!--              @@@@@@@@@@@@@@@@@@@@@@                 -->

@@ -56,6 +56,12 @@
   </compset>
 
   <compset>
+    <alias>F2000climoSROF</alias>
+    <lname>2000_CAM60_CLM50%SP_CICE%PRES_DOCN%DOM_SROF_SGLC_SWAV</lname>
+    <science_support grid="f09_f09_mg17"/>
+  </compset>
+
+  <compset>
     <alias>FHIST</alias>
     <lname>HIST_CAM60_CLM50%SP_CICE%PRES_DOCN%DOM_MOSART_SGLC_SWAV</lname>
     <science_support grid="f09_f09_mg17"/>
@@ -701,7 +707,7 @@
         <value  compset="CAM.*%SCAMMPACE">2004-10-05</value>
         <value  compset="CAM.*%SCAMRICO">1995-07-15</value>
         <value  compset="CAM.*%SCAMSPARTICUS">2010-04-01</value>
-        <value  compset="CAM.*%SCAMTOGA2">1992-12-18</value>
+        <value  compset="CAM.*%SCAMTOGA2">1992-12-19</value>
         <value  compset="CAM.*%SCAMTWP06">2006-01-17</value>
         <value  compset="CAM.*%SCAMCAMFRC">1997-06-18</value>
       </values>
@@ -722,7 +728,7 @@
         <value  compset="CAM.*%SCAMMPACE">413</value>
         <value  compset="CAM.*%SCAMRICO">71</value>
         <value  compset="CAM.*%SCAMSPARTICUS">717</value>
-        <value  compset="CAM.*%SCAMTOGA2">480</value>
+        <value  compset="CAM.*%SCAMTOGA2">490</value>
         <value  compset="CAM.*%SCAMTWP06">641</value>
         <value  compset="CAM.*%SCAMCAMFRC">10</value>
       </values>
