@@ -8,7 +8,7 @@ module geopotential
 ! The hydrostatic matrix elements must be consistent with the dynamics algorithm.
 ! The diagonal element is the itegration weight from interface k+1 to midpoint k.
 ! The offdiagonal element is the weight between interfaces.
-! 
+!
 ! Author: B.Boville, Feb 2001 from earlier code by Boville and S.J. Lin
 !---------------------------------------------------------------------------------
 
@@ -29,9 +29,9 @@ contains
        piln   , pmln   , pint   , pmid   , pdel   , rpdel  ,  &
        dse    , q      , phis   , rair   , gravit , cpair  ,  &
        zvir   , t      , zi     , zm     , ncol             )
-!----------------------------------------------------------------------- 
-! 
-! Purpose: 
+!-----------------------------------------------------------------------
+!
+! Purpose:
 ! Compute the temperature  and geopotential height (above the surface) at the
 ! midpoints and interfaces from the input dry static energy and pressures.
 !
@@ -77,7 +77,7 @@ contains
     rog(:ncol,:) = rair(:ncol,:) / gravit
 
 ! set calculation method based on dycore type
-    calc1 = dycore_is ('LR').or.dycore_is('FV3')
+    calc1 = dycore_is ('LR').or.dycore_is('FV3').or.dycore_is('SENH')
 
 ! The surface height is zero by definition.
     do i = 1,ncol
@@ -123,10 +123,10 @@ contains
        t      , q      , rair   , gravit , zvir   ,          &
        zi     , zm     , ncol   )
 
-!----------------------------------------------------------------------- 
-! 
-! Purpose: 
-! Compute the geopotential height (above the surface) at the midpoints and 
+!-----------------------------------------------------------------------
+!
+! Purpose:
+! Compute the geopotential height (above the surface) at the midpoints and
 ! interfaces using the input temperatures and pressures.
 !
 !-----------------------------------------------------------------------
@@ -175,14 +175,14 @@ use ppgrid, only : pcols
        zi(i,pverp) = 0.0_r8
     end do
 
-! Compute zi, zm from bottom up. 
+! Compute zi, zm from bottom up.
 ! Note, zi(i,k) is the interface above zm(i,k)
 
     do k = pver, 1, -1
 
 ! First set hydrostatic elements consistent with dynamics
 
-      if ((dycore_is('LR') .or. dycore_is('FV3'))) then
+      if ((dycore_is('LR') .or. dycore_is('FV3').or. dycore_is('SENH'))) then
         do i = 1,ncol
           hkl(i) = piln(i,k+1) - piln(i,k)
           hkk(i) = 1._r8 - pint(i,k) * hkl(i) * rpdel(i,k)

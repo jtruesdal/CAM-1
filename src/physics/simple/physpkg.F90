@@ -536,12 +536,12 @@ contains
 
     call calc_te_and_aam_budgets(state, 'phAP')
     call calc_te_and_aam_budgets(state, 'dyAP',vc=vc_dycore)
-    
+
     ! FV: convert dry-type mixing ratios to moist here because
     !     physics_dme_adjust assumes moist. This is done in p_d_coupling for
     !     other dynamics. Bundy, Feb 2004.
     !
-    moist_mixing_ratio_dycore = dycore_is('LR').or. dycore_is('FV3')    
+    moist_mixing_ratio_dycore = dycore_is('LR').or. dycore_is('FV3').or.dycore_is('SENH')
     if (moist_physics .and. moist_mixing_ratio_dycore) then
       call set_dry_to_wet(state)    ! Physics had dry, dynamics wants moist
     end if
@@ -562,7 +562,7 @@ contains
         tmp_cldice(:ncol,:pver) = 0.0_r8
       end if
 
-      ! for dry mixing ratio dycore, physics_dme_adjust is called for energy diagnostic purposes only.  
+      ! for dry mixing ratio dycore, physics_dme_adjust is called for energy diagnostic purposes only.
       ! So, save off tracers
       if (.not.moist_mixing_ratio_dycore.and.&
          (hist_fld_active('SE_phAM').or.hist_fld_active('KE_phAM').or.hist_fld_active('WV_phAM').or.&

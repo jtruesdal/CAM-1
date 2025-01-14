@@ -11,7 +11,7 @@ use cam_history_support,     only: max_fieldname_len
 use cam_initfiles,           only: initial_file_get_id, topo_file_get_id, pertlim
 use cam_logfile,             only: iulog
 use cam_map_utils,           only: iMap
-use dimensions_mod,          only: nelemd, nlev, np, npsq, ne, ne_x, ne_y, fv_nphys
+use dimensions_mod,          only: nelemd, nlev, np, npsq, ne, ne_x, ne_y, fv_nphys,qsize
 use dyn_grid,                only: timelevel, dom_mt, hvcoord, ini_grid_hdim_name
 !jtuse dyn_grid,                only: get_horiz_grid_dim_d, dyn_decomp, fv_nphys, ini_grid_name
 use dyn_grid,                only: get_horiz_grid_dim_d, dyn_decomp, ini_grid_name
@@ -791,10 +791,7 @@ subroutine dyn_init(dyn_in, dyn_out)
        nete=dom_mt(ithr)%end
        hybrid = hybrid_create(par,ithr,hthreads)
 
-!jt    moisture='moist'
-
        if(adiabatic) then
-!jt         moisture='dry'
           if(runtype == 0) then
              do ie=nets,nete
                 elem(ie)%state%q(:,:,:,:)=0.0_r8
@@ -802,7 +799,6 @@ subroutine dyn_init(dyn_in, dyn_out)
              end do
           end if
        else if(ideal_phys) then
-!jt         moisture='dry'
           if(runtype == 0) then
              do ie=nets,nete
                 elem(ie)%state%ps_v(:,:,:) =hvcoord%ps0
@@ -961,33 +957,34 @@ end subroutine dyn_final
 
 subroutine read_inidat(dyn_in)
 
-   use shr_vmath_mod,       only: shr_vmath_log
-   use hycoef,              only: ps0
-   use constituents,            only: cnst_name, cnst_read_iv, qmin,cnst_is_a_water_species
-   use cam_control_mod,     only: ideal_phys, aqua_planet
-   use cam_initfiles,       only: initial_file_get_id, topo_file_get_id, pertlim
-   use cam_history_support, only: max_fieldname_len
-   use cam_grid_support,    only: cam_grid_get_local_size, cam_grid_get_gcid
-   use const_init,          only: cnst_init_default
+  use aoa_tracers,             only: aoa_tracers_implements_cnst, aoa_tracers_init_cnst
+  use constituents,            only: cnst_name, cnst_read_iv, qmin,cnst_is_a_water_species
+  use cam_control_mod,         only: ideal_phys, aqua_planet
+  use cam_initfiles,           only: initial_file_get_id, topo_file_get_id, pertlim
+  use cam_history_support,     only: max_fieldname_len
+  use cam_grid_support,        only: cam_grid_get_local_size, cam_grid_get_gcid
+  use carma_intr,              only: carma_implements_cnst, carma_init_cnst
+  use chemistry,               only: chem_implements_cnst, chem_init_cnst
 
-    use chemistry,               only: chem_implements_cnst, chem_init_cnst
-   use carma_intr,          only: carma_implements_cnst, carma_init_cnst
-    use tracers,                 only: tracers_implements_cnst, tracers_init_cnst
-    use aoa_tracers,             only: aoa_tracers_implements_cnst, aoa_tracers_init_cnst
-    use clubb_intr,              only: clubb_implements_cnst, clubb_init_cnst
-   use rk_stratiform,       only: rk_stratiform_implements_cnst, rk_stratiform_init_cnst
-    use microp_driver,           only: microp_driver_implements_cnst, microp_driver_init_cnst
-    use phys_control,            only: phys_getopts
-    use co2_cycle,               only: co2_implements_cnst, co2_init_cnst
+  use clubb_intr,              only: clubb_implements_cnst, clubb_init_cnst
+  use co2_cycle,               only: co2_implements_cnst, co2_init_cnst
+  use const_init,              only: cnst_init_default
+  use dof_mod,                 only: putUniquePoints
+  use dyn_tests_utils,         only: vcoord=>vc_moist_pressure
+  use edge_mod,                only : edgevpack_nlyr, edgevunpack_nlyr, edge_g
+  use element_ops,             only: set_thermostate
+  use gllfvremap_mod,          only: gfr_fv_phys_to_dyn_topo
+  use hycoef,                  only: ps0
+  use microp_driver,           only: microp_driver_implements_cnst, microp_driver_init_cnst
+  use phys_control,            only: phys_getopts
+  use rk_stratiform,           only: rk_stratiform_implements_cnst, rk_stratiform_init_cnst
 
-   use dof_mod,             only: putUniquePoints
-   use edge_mod,            only : edgevpack_nlyr, edgevunpack_nlyr, edge_g
-!jt   use nctopo_util_mod,     only: nctopo_util_inidat
+  use shr_vmath_mod,           only: shr_vmath_log
+  use tracers,                 only: tracers_implements_cnst, tracers_init_cnst
+  !jt   use nctopo_util_mod,     only: nctopo_util_inidat
 
-!jt   use iop_data_mod,            only: setiopupdate, setiopupdate_init, readiopdata
-!jt   use se_iop_intr_mod,         only: iop_setinitial, iop_broadcast
-   use element_ops,             only: set_thermostate
-   use gllfvremap_mod,          only: gfr_fv_phys_to_dyn_topo
+  !jt   use iop_data_mod,            only: setiopupdate, setiopupdate_init, readiopdata
+  !jt   use se_iop_intr_mod,         only: iop_setinitial, iop_broadcast
 
    type (dyn_import_t), target, intent(inout) :: dyn_in   ! dynamics import
 
@@ -1041,12 +1038,17 @@ subroutine read_inidat(dyn_in)
 
     logical :: iop_update_surface
 
+    ! Variables for analytic initial conditions
+    integer,  allocatable            :: glob_ind(:)
+    integer,  allocatable            :: m_ind(:)
+    real(r8), allocatable            :: dbuf4(:,:,:,:)
+
     tl = 1
 
-   fh_ini  => initial_file_get_id()
+    fh_ini  => initial_file_get_id()
 !jt   fh_topo => topo_file_get_id()
 
-   if(iam < par%nprocs) then
+    if(iam < par%nprocs) then
        elem=> dyn_in%elem
     else
        nullify(elem)
@@ -1128,10 +1130,129 @@ subroutine read_inidat(dyn_in)
 !jt    if (scm_multcols) then
 !jt      indx_scm = 1
 !jt    endif
+   ! Set ICs.  Either from analytic expressions or read from file.
+
+   if (analytic_ic_active() .and. (iam < par%nprocs)) then
+
+      ! PHIS has already been set by set_phis.  Get local copy for
+      ! possible use in setting T and PS in the analytic IC code.
+      allocate(phis_tmp(npsq,nelemd))
+      do ie = 1, nelemd
+         k = 1
+         do j = 1, np
+            do i = 1, np
+               phis_tmp(k,ie) = elem(ie)%state%phis(i,j)
+               k = k + 1
+            end do
+         end do
+      end do
+
+      inic_wet = .false.
+      allocate(glob_ind(npsq * nelemd))
+      j = 1
+      do ie = 1, nelemd
+         do i = 1, npsq
+            ! Create a global(ish) column index
+            glob_ind(j) = elem(ie)%GlobalId
+            j = j + 1
+         end do
+      end do
+
+      ! First, initialize all the variables, then assign
+      allocate(dbuf4(npsq, nlev, nelemd, (qsize + 4)))
+      dbuf4 = 0.0_r8
+      allocate(m_ind(qsize))
+      do m_cnst = 1, qsize
+         m_ind(m_cnst) = m_cnst
+      end do
+
+      ! Init tracers on the GLL grid.  Note that analytic_ic_set_ic makes
+      ! use of cnst_init_default for the tracers except water vapor.
+
+      call analytic_ic_set_ic(vcoord, latvals, lonvals, glob_ind,  &
+         PS=dbuf4(:,1,:,(qsize+1)), U=dbuf4(:,:,:,(qsize+2)),      &
+         V=dbuf4(:,:,:,(qsize+3)), T=dbuf4(:,:,:,(qsize+4)),       &
+         Q=dbuf4(:,:,:,1:qsize), m_cnst=m_ind, mask=pmask(:),      &
+         PHIS_IN=PHIS_tmp)
+      deallocate(m_ind)
+      deallocate(glob_ind)
+      deallocate(phis_tmp)
+      do ie = 1, nelemd
+         indx = 1
+         do j = 1, np
+            do i = 1, np
+               ! PS
+               elem(ie)%state%ps_v(i,j,tl) = dbuf4(indx, 1, ie, (qsize+1)) ! can be either wet or dry ps
+               ! U
+               elem(ie)%state%v(i,j,1,:,1) = dbuf4(indx, :, ie, (qsize+2))
+               ! V
+               elem(ie)%state%v(i,j,2,:,1) = dbuf4(indx, :, ie, (qsize+3))
+               ! T
+#ifdef MODEL_THETA_L
+               elem(ie)%derived%FT(i,j,:) = dbuf4(indx, :, ie, (qsize+4))
+#else
+               elem(ie)%state%T(i,j,:,1) = dbuf4(indx, :, ie, (qsize+4))
+#endif
+               indx = indx + 1
+            end do
+         end do
+      end do
+
+      ! Tracers to be advected on GLL grid.
+      do m_cnst = 1, qsize
+         do ie = 1, nelemd
+            qtmp(:,:,:,ie,m_cnst) = 0.0_r8
+            indx = 1
+            do j = 1, np
+               do i = 1, np
+                  ! Set qtmp at the unique columns only
+                  if (pmask(((ie - 1) * npsq) + indx)) then
+                     qtmp(i,j,:,ie,m_cnst) = dbuf4(indx, :, ie, m_cnst)
+                  end if
+                  indx = indx + 1
+               end do
+            end do
+         end do
+      end do
+      deallocate(dbuf4)
+   else
 
       ! Read ICs from file.  Assume all fields in the initial file are on the GLL grid.
 
+      allocate(dbuf2(npsq,nelemd))
       allocate(dbuf3(npsq,nlev,nelemd))
+
+      ! Read 2-D field
+
+      fieldname  = 'PS'
+      fieldname2 = 'PSDRY'
+      if (dyn_field_exists(fh_ini, trim(fieldname), required=.false.)) then
+         inic_wet = .true.
+         call read_dyn_var(trim(fieldname), fh_ini, ini_grid_hdim_name, dbuf2)
+      elseif (dyn_field_exists(fh_ini, trim(fieldname2), required=.false.)) then
+         inic_wet = .false.
+         call read_dyn_var(trim(fieldname2), fh_ini, ini_grid_hdim_name, dbuf2)
+      else
+         call endrun(trim(subname)//': PS or PSDRY must be on GLL grid')
+      end if
+
+#ifndef planet_mars
+      if (iam < par%nprocs) then
+         if (minval(dbuf2, mask=reshape(pmask, (/npsq,nelemd/))) < 10000._r8) then
+            call endrun(trim(subname)//': Problem reading ps or psdry field -- bad values')
+         end if
+      end if
+#endif
+      do ie = 1, nelemd
+         indx = 1
+         do j = 1, np
+            do i = 1, np
+               elem(ie)%state%ps_v(i,j,tl) = dbuf2(indx,ie) ! can be either wet or dry ps
+               indx = indx + 1
+            end do
+         end do
+      end do
+
 
       ! Read in 3-D fields
 
@@ -1223,6 +1344,12 @@ subroutine read_inidat(dyn_in)
       end if
 
       ! Cleanup
+      deallocate(dbuf2)
+      deallocate(dbuf3)
+
+   end if ! analytic_ic_active
+
+   allocate(dbuf3(npsq,nlev,nelemd))
 
    do m_cnst = 1, pcnst
 
@@ -1266,7 +1393,7 @@ subroutine read_inidat(dyn_in)
    call pio_seterrorhandling(fh_ini, pio_errtype)
 
    ! Cleanup
-!jt   deallocate(pmask)
+   deallocate(pmask)
    deallocate(latvals)
    deallocate(lonvals)
 
@@ -1275,261 +1402,94 @@ subroutine read_inidat(dyn_in)
       nullify(ldof)
    end if
 
-   ! Read ICs from file.  Assume all fields in the initial file are on the GLL grid.
 
-   allocate(dbuf2(npsq,nelemd))
-   allocate(dbuf3(npsq,nlev,nelemd))
+   ! once we've read all the fields we do a boundary exchange to
+   ! update the redundent columns in the dynamics
+   !jt      nlev_tot=(3+pcnst)*nlev+2
+   nlev_tot=(3+pcnst)*nlev+1
 
-   ! Read 2-D field
-
-   fieldname  = 'PS'
-   fieldname2 = 'PSDRY'
-   if (dyn_field_exists(fh_ini, trim(fieldname), required=.false.)) then
-      inic_wet = .true.
-      call read_dyn_var(trim(fieldname), fh_ini, ini_grid_hdim_name, dbuf2)
-   elseif (dyn_field_exists(fh_ini, trim(fieldname2), required=.false.)) then
-      inic_wet = .false.
-      call read_dyn_var(trim(fieldname2), fh_ini, ini_grid_hdim_name, dbuf2)
-   else
-      call endrun(trim(subname)//': PS or PSDRY must be on GLL grid')
+#ifdef MODEL_THETA_L
+   do ie=1,nelemd
+      kptr=0
+      call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%ps_v(:,:,tl),1,kptr,nlev_tot)
+!!$        kptr=kptr+1
+!!$        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%phis,1,kptr,nlev_tot)
+      kptr=kptr+1
+      call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%v(:,:,:,:,tl),2*nlev,kptr,nlev_tot)
+      kptr=kptr+2*nlev
+      call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%derived%FT(:,:,:),nlev,kptr,nlev_tot)
+      kptr=kptr+nlev
+      call edgeVpack_nlyr(edge_g, elem(ie)%desc, qtmp(:,:,:,ie,:),nlev*pcnst,kptr,nlev_tot)
+   end do
+#else
+   do ie=1,nelemd
+      kptr=0
+      call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%ps_v(:,:,tl),1,kptr,nlev_tot)
+!!$        kptr=kptr+1
+!!$        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%phis,1,kptr,nlev_tot)
+      kptr=kptr+1
+      call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%v(:,:,:,:,tl),2*nlev,kptr,nlev_tot)
+      kptr=kptr+2*nlev
+      call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%T(:,:,:,tl),nlev,kptr,nlev_tot)
+      kptr=kptr+nlev
+      call edgeVpack_nlyr(edge_g, elem(ie)%desc, qtmp(:,:,:,ie,:),nlev*pcnst,kptr,nlev_tot)
+   end do
+#endif
+   if(par%dynproc) then
+      call bndry_exchangeV(par,edge_g)
    end if
-
-!!$    fieldname = 'PS'
-!!$    tmp(:,1,:) = 0.0_r8
-!!$    call t_startf('read_inidat_infld')
-!!$!jt    if (.not. scm_multcols) then
-!!$      call infld(fieldname, fh_ini, ncol_name,      &
-!!$           1, npsq, 1, nelemd, tmp(:,1,:), found, gridname=grid_name)
-!!$!jt    else
-!!$!jt      call infld(fieldname, fh_ini, ncol_name,      &
-!!$!jt           1, 1, 1, 1, tmp(:,1,:), found, gridname=grid_name)
-!!$!jt    endif
-!!$    call t_stopf('read_inidat_infld')
-!!$    if(.not. found) then
-!!$       call endrun('Could not find PS field on input datafile')
-!!$    end if
-!!$
-!!$    ! Check read-in data to make sure it is in the appropriate units
-!!$    allocate(tmpmask(npsq,nelemd))
-!!$    tmpmask = (reshape(ldof, (/npsq,nelemd/)) /= 0)
-!!$
-!!$!jt    if(minval(tmp(:,1,:), mask=tmpmask) < 10000._r8 .and. .not. scm_multcols) then
-!!$    if(minval(tmp(:,1,:), mask=tmpmask) < 10000._r8) then
-!!$       call endrun('Problem reading ps field')
-!!$    end if
-
-!jt    if (scm_multcols) then
-!jt      if (tmp(1,1,1) < 10000._r8) then
-!jt        call endrun('Problem reading ps field')
-!jt      endif
-!jt    endif
-
-!jt    deallocate(tmpmask)
-
-#ifndef planet_mars
-      if (iam < par%nprocs) then
-         if (minval(dbuf2, mask=reshape(pmask, (/npsq,nelemd/))) < 10000._r8) then
-            call endrun(trim(subname)//': Problem reading ps or psdry field -- bad values')
-         end if
-      end if
-#endif
-      do ie = 1, nelemd
-         indx = 1
-         do j = 1, np
-            do i = 1, np
-               elem(ie)%state%ps_v(i,j,tl) = dbuf2(indx,ie) ! can be either wet or dry ps
-               indx = indx + 1
-            end do
-         end do
-      end do
-
-
-!!$      do ie=1,nelemd
-!!$       elem(ie)%state%ps_v=0.0_r8
-!!$          indx = 1
-!!$          do j = 1, np
-!!$             do i = 1, np
-!!$                elem(ie)%state%ps_v(i,j,tl) = tmp(indx,1,ie)
-!!$!jt                if (single_column .and. .not. scm_multcols) elem(ie)%state%ps_v(i,j,tl) = tmp(indx_scm,1,ie_scm)
-!!$!jt                if (scm_multcols) elem(ie)%state%ps_v(i,j,tl) = tmp(1,1,1)
-!!$                indx = indx + 1
-!!$             end do
-!!$          end do
-!!$    end do
-
-!!$    read_pg_grid = .false.
-!!$    if ( (ideal_phys .or. aqua_planet)) then
-!!$       tmp(:,1,:) = 0._r8
-!!$       if (fv_nphys > 0) phis_tmp(:,:) = 0._r8
-!!$    else
-!!$      fieldname = 'PHIS'
-!!$      tmp(:,1,:) = 0.0_r8
-!!$      if (fv_nphys == 0) then
-!!$         call t_startf('read_inidat_infld')
-!!$!jt         if (.not. scm_multcols) then
-!!$           call infld(fieldname, ncid_topo, ncol_name,      &
-!!$              1, npsq, 1, nelemd, tmp(:,1,:), found, gridname=grid_name)
-!!$!jt         else
-!!$!jt           call infld(fieldname, ncid_topo, ncol_name,      &
-!!$!jt              1, 1, 1, 1, tmp(:,1,:), found, gridname=grid_name)
-!!$!jt         endif
-!!$         call t_stopf('read_inidat_infld')
-!!$
-!!$      else
-!!$         ! Attempt to read a mixed GLL-FV topo file, which contains PHIS_d in
-!!$         ! addition to PHIS.
-!!$
-!!$         call t_startf('read_inidat_infld')
-!!$         call infld(trim(fieldname) // '_d', ncid_topo, ncol_name, &
-!!$              1, npsq, 1, nelemd, tmp(:,1,:), found, gridname=grid_name)
-!!$         call t_stopf('read_inidat_infld')
-!!$
-!!$         if (found) then
-!!$            if (masterproc) then
-!!$               write(iulog,*) 'reading GLL ', trim(fieldname) // '_d', &
-!!$                    ' on gridname ', trim(grid_name)
-!!$            end if
-!!$         else
-!!$            ! Pure-FV topo file, so read FV PHIS and map it to GLL.
-!!$            if (masterproc) then
-!!$               write(iulog,*) 'reading FV ', trim(fieldname), &
-!!$                    ' on gridname physgrid_d'
-!!$            end if
-!!$            read_pg_grid = .true.
-!!$
-!!$            call t_startf('read_inidat_infld')
-!!$            call infld(fieldname, ncid_topo, ncol_name, 1, nphys_sq, &
-!!$                 1, nelemd, phis_tmp, found, gridname='physgrid_d')
-!!$            call t_stopf('read_inidat_infld')
-!!$
-!!$            call gfr_fv_phys_to_dyn_topo(par, dom_mt, elem, phis_tmp)
-!!$         end if
-!!$      end if
-!!$      if(.not. found) then
-!!$         call endrun('Could not find PHIS field on input datafile')
-!!$      end if
-!!$    end if
-!!$
-!!$    if (.not. read_pg_grid) then
-!!$      do ie=1,nelemd
-!!$         elem(ie)%state%phis=0.0_r8
-!!$         indx = 1
-!!$         do j = 1, np
-!!$            do i = 1, np
-!!$               elem(ie)%state%phis(i,j) = tmp(indx,1,ie)
-!!$!jt               if (single_column .and. .not. scm_multcols) elem(ie)%state%phis(i,j) = tmp(indx_scm,1,ie_scm)
-!!$!jt               if (scm_multcols) elem(ie)%state%phis(i,j) = tmp(1,1,1)
-!!$               indx = indx + 1
-!!$            end do
-!!$         end do
-!!$      end do
-!!$    end if ! not read_pg_grid
-
-!jt    if (single_column) then
-!jt      iop_update_surface = .false.
-!jt      if (masterproc) call setiopupdate_init()
-!jt      if (masterproc) call readiopdata(iop_update_surface,hyam,hybm)
-!jt      if (scm_multcols) call iop_broadcast()
-!jt      call iop_setinitial(elem)
-!jt    endif
-
-!!$      if (dp_crm) then
-!!$        ! Define reference pressure, to potentially restrict initial perturbations
-!!$        !  to a certain height if requested
-!!$        do k=1,nlev
-!!$          p_ref(k) = hvcoord%hyam(k)*hvcoord%ps0 + hvcoord%hybm(k)*hvcoord%ps0
-!!$        enddo
-!!$      endif
-
-!jt    if (.not. single_column) then
-    if (.true.) then
-
-      ! once we've read all the fields we do a boundary exchange to
-      ! update the redundent columns in the dynamics
-!jt      nlev_tot=(3+pcnst)*nlev+2
-      nlev_tot=(3+pcnst)*nlev+1
-
 #ifdef MODEL_THETA_L
-      do ie=1,nelemd
-        kptr=0
-        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%ps_v(:,:,tl),1,kptr,nlev_tot)
-!!$        kptr=kptr+1
-!!$        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%phis,1,kptr,nlev_tot)
-        kptr=kptr+1
-        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%v(:,:,:,:,tl),2*nlev,kptr,nlev_tot)
-        kptr=kptr+2*nlev
-        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%derived%FT(:,:,:),nlev,kptr,nlev_tot)
-        kptr=kptr+nlev
-        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%Q(:,:,:,:),nlev*pcnst,kptr,nlev_tot)
-      end do
-#else
-      do ie=1,nelemd
-        kptr=0
-        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%ps_v(:,:,tl),1,kptr,nlev_tot)
-!!$        kptr=kptr+1
-!!$        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%phis,1,kptr,nlev_tot)
-        kptr=kptr+1
-        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%v(:,:,:,:,tl),2*nlev,kptr,nlev_tot)
-        kptr=kptr+2*nlev
-        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%T(:,:,:,tl),nlev,kptr,nlev_tot)
-        kptr=kptr+nlev
-        call edgeVpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%Q(:,:,:,:),nlev*pcnst,kptr,nlev_tot)
-      end do
-#endif
-      if(par%dynproc) then
-        call bndry_exchangeV(par,edge_g)
-      end if
-#ifdef MODEL_THETA_L
-      do ie=1,nelemd
-        kptr=0
-        call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%ps_v(:,:,tl),1,kptr,nlev_tot)
+   do ie=1,nelemd
+      kptr=0
+      call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%ps_v(:,:,tl),1,kptr,nlev_tot)
 !!$        kptr=kptr+1
 !!$        call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%phis,1,kptr,nlev_tot)
-        kptr=kptr+1
-        call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%v(:,:,:,:,tl),2*nlev,kptr,nlev_tot)
-        kptr=kptr+2*nlev
-        call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%derived%FT(:,:,:),nlev,kptr,nlev_tot)
-        kptr=kptr+nlev
-        call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%Q(:,:,:,:),nlev*pcnst,kptr,nlev_tot)
-      end do
+      kptr=kptr+1
+      call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%v(:,:,:,:,tl),2*nlev,kptr,nlev_tot)
+      kptr=kptr+2*nlev
+      call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%derived%FT(:,:,:),nlev,kptr,nlev_tot)
+      kptr=kptr+nlev
+      call edgeVunpack_nlyr(edge_g, elem(ie)%desc, qtmp(:,:,:,ie,:),nlev*pcnst,kptr,nlev_tot)
+      elem(ie)%state%q(:,:,:,:)=qtmp(:,:,:,ie,:)
+   end do
 #else
-      do ie=1,nelemd
-        kptr=0
-        call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%ps_v(:,:,tl),1,kptr,nlev_tot)
+   do ie=1,nelemd
+      kptr=0
+      call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%ps_v(:,:,tl),1,kptr,nlev_tot)
 !!$        kptr=kptr+1
 !!$        call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%phis,1,kptr,nlev_tot)
-        kptr=kptr+1
-        call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%v(:,:,:,:,tl),2*nlev,kptr,nlev_tot)
-        kptr=kptr+2*nlev
-        call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%T(:,:,:,tl),nlev,kptr,nlev_tot)
-        kptr=kptr+nlev
-        call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%Q(:,:,:,:),nlev*pcnst,kptr,nlev_tot)
-      end do
+      kptr=kptr+1
+      call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%v(:,:,:,:,tl),2*nlev,kptr,nlev_tot)
+      kptr=kptr+2*nlev
+      call edgeVunpack_nlyr(edge_g, elem(ie)%desc, elem(ie)%state%T(:,:,:,tl),nlev,kptr,nlev_tot)
+      kptr=kptr+nlev
+      call edgeVunpack_nlyr(edge_g, elem(ie)%desc, qtmp(:,:,:,ie,:),nlev*pcnst,kptr,nlev_tot)
+      elem(ie)%state%q(:,:,:,:)=qtmp(:,:,:,ie,:)
+   end do
 #endif
-    endif
 
-!$omp parallel do private(ie, ps, t, m_cnst)
-    do ie=1,nelemd
-       ps=elem(ie)%state%ps_v(:,:,tl)
+   !$omp parallel do private(ie, ps, t, m_cnst)
+   do ie=1,nelemd
+      ps=elem(ie)%state%ps_v(:,:,tl)
 #ifdef MODEL_THETA_L
-       elem(ie)%state%w_i = 0.0
-       call set_thermostate(elem(ie),ps,elem(ie)%derived%FT,hvcoord,elem(ie)%state%Q(:,:,:,1))
-       !FT used as tmp array - reset
-       elem(ie)%derived%FT = 0.0
+      elem(ie)%state%w_i = 0.0
+      call set_thermostate(elem(ie),ps,elem(ie)%derived%FT,hvcoord,elem(ie)%state%Q(:,:,:,1))
+      !FT used as tmp array - reset
+      elem(ie)%derived%FT = 0.0
 #else
-       call set_thermostate(elem(ie),ps,elem(ie)%state%T(:,:,:,tl),hvcoord)
+      call set_thermostate(elem(ie),ps,elem(ie)%state%T(:,:,:,tl),hvcoord)
 #endif
-    end do
+   end do
 
    ! Cleanup
-    deallocate(tmp)
-    deallocate(tmp_point)
-    deallocate(qtmp)
-    if (fv_nphys>0) then
+   deallocate(tmp)
+   deallocate(tmp_point)
+   deallocate(qtmp)
+   if (fv_nphys>0) then
       deallocate(phis_tmp)
-    end if
+   end if
 
-  end subroutine read_inidat
+ end subroutine read_inidat
 
 !=============================================================================================
 !========================================================================================
@@ -1548,7 +1508,7 @@ subroutine set_phis(dyn_in)
    ! which are computed on the physics grid.  In this case phis on the physics grid
    ! will be interpolated to the GLL grid.
 
-  use dyn_tests_utils,        only: vcoord=>vc_dry_pressure
+  use dyn_tests_utils,        only: vcoord=>vc_moist_pressure
 
    ! Arguments
    type (dyn_import_t), target, intent(inout) :: dyn_in   ! dynamics import
