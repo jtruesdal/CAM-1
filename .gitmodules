@@ -9,7 +9,7 @@
 	path = src/physics/carma/base
 	url = https://github.com/ESCOMP/CARMA_base.git
         fxrequired = AlwaysRequired
-        fxtag = carma4_01
+        fxtag = carma4_09
         fxDONOTUSEurl = https://github.com/ESCOMP/CARMA_base.git
 
 [submodule "pumas"]
@@ -51,13 +51,27 @@
 	path = src/chemistry/geoschem/geoschem_src
 	url = https://github.com/geoschem/geos-chem.git
         fxrequired = AlwaysRequired
-        fxtag = 14.1.2
+        fxtag = 14.4.3
         fxDONOTUSEurl = https://github.com/geoschem/geos-chem.git
+
+[submodule "cloud_j"]
+	path = src/chemistry/cloud_j
+	url = https://github.com/geoschem/cloud-j.git
+        fxrequired = AlwaysRequired
+        fxtag = 7.7.3
+        fxDONOTUSEurl = https://github.com/geoschem/cloud-j.git
+
+[submodule "hetp"]
+	path = src/chemistry/hetp
+	url = https://github.com/geoschem/heterogeneous-vectorized-or-parallel.git
+        fxrequired = AlwaysRequired
+        fxtag = geoschem_hetp_1.0
+        fxDONOTUSEurl = https://github.com/geoschem/heterogeneous-vectorized-or-parallel.git
 
 [submodule "hemco"]
 	path = src/hemco
 	url = https://github.com/ESCOMP/HEMCO_CESM.git
-        fxtag = hemco-cesm1_2_1_hemco3_6_3_cesm_rme01
+        fxtag = hemco-cesm2_0_hemco3_9_0
         fxrequired = AlwaysRequired
 	fxDONOTUSEurl = https://github.com/ESCOMP/HEMCO_CESM.git
 
@@ -80,7 +94,7 @@
 	url = https://github.com/MPAS-Dev/MPAS-Model.git
         fxrequired = AlwaysRequired
         fxsparse = ../.mpas_sparse_checkout
-        fxtag = b8c33daa
+        fxtag = v8.2.1
 	fxDONOTUSEurl = https://github.com/MPAS-Dev/MPAS-Model.git
 
 [submodule "cosp2"]
@@ -96,7 +110,7 @@
 	url = https://github.com/larson-group/clubb_release
         fxrequired = AlwaysRequired
         fxsparse = ../.clubb_sparse_checkout
-        fxtag = clubb_4ncar_20231115_5406350
+        fxtag = clubb_4ncar_20240605_73d60f6_gpufixes_posinf
         fxDONOTUSEurl = https://github.com/larson-group/clubb_release
 
 [submodule "cism"]
@@ -130,63 +144,62 @@ fxDONOTUSEurl = https://github.com/ESCOMP/mizuRoute
 [submodule "ccs_config"]
 path = ccs_config
 url = https://github.com/ESMCI/ccs_config_cesm.git
-fxtag = ccs_config_cesm1.0.0
+fxtag = ccs_config_cesm1.0.21 
 fxrequired = ToplevelRequired
 fxDONOTUSEurl = https://github.com/ESMCI/ccs_config_cesm.git
 
 [submodule "cime"]
 path = cime
 url = https://github.com/ESMCI/cime
-fxtag = cime6.1.0
+fxtag = cime6.1.56
 fxrequired = ToplevelRequired
 fxDONOTUSEurl = https://github.com/ESMCI/cime
 
 [submodule "cmeps"]
 path = components/cmeps
 url = https://github.com/ESCOMP/CMEPS.git
-fxtag = cmeps1.0.2
+fxtag = cmeps1.0.32
 fxrequired = ToplevelRequired
 fxDONOTUSEurl = https://github.com/ESCOMP/CMEPS.git
 
 [submodule "cdeps"]
 path = components/cdeps
 url = https://github.com/ESCOMP/CDEPS.git
-fxtag = cdeps1.0.43
+fxtag = cdeps1.0.61
 fxrequired = ToplevelRequired
 fxDONOTUSEurl = https://github.com/ESCOMP/CDEPS.git
 
 [submodule "share"]
 path = share
 url = https://github.com/ESCOMP/CESM_share
-fxtag = share1.1.2
+fxtag = share1.1.6
 fxrequired = ToplevelRequired
 fxDONOTUSEurl = https://github.com/ESCOMP/CESM_share
 
 [submodule "parallelio"]
 path = libraries/parallelio
 url = https://github.com/NCAR/ParallelIO
-fxtag = pio2_6_2
+fxtag = pio2_6_3
 fxrequired = ToplevelRequired
 fxDONOTUSEurl = https://github.com/NCAR/ParallelIO
 
 [submodule "cice"]
 path = components/cice
 url = https://github.com/ESCOMP/CESM_CICE
-fxtag = cesm_cice6_5_0_10
+fxtag = cesm3_cice6_6_0_6
 fxrequired = ToplevelRequired
 fxDONOTUSEurl = https://github.com/ESCOMP/CESM_CICE
 
 [submodule "clm"]
 path = components/clm
 url = https://github.com/ESCOMP/CTSM
-fxtag = ctsm5.2.009
+fxtag = ctsm5.3.016
 fxrequired = ToplevelRequired
 fxDONOTUSEurl = https://github.com/ESCOMP/CTSM
 
 [submodule "fms"]
 path = libraries/FMS
 url = https://github.com/ESCOMP/FMS_interface
-fxtag = fi_240516
+fxtag = fi_240828
 fxrequired = ToplevelRequired
 fxDONOTUSEurl = https://github.com/ESCOMP/FMS_interface
-
