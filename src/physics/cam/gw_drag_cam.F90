@@ -75,9 +75,6 @@ module gw_drag_cam
   type(BeresSourceDesc) :: beres_dp_desc
   type(BeresSourceDesc) :: beres_sh_desc
 
-  ! Moving mountain settings and table.
-  type(MovMtnSourceDesc) :: movmtn_desc
-
   ! Frontogenesis wave settings.
   type(CMSourceDesc) :: cm_desc
   type(CMSourceDesc) :: cm_igw_desc
@@ -226,7 +223,6 @@ module gw_drag_cam
   real(r8) :: alpha_gw_movmtn
 
   logical :: gw_top_taper=.false.
-  real(r8) :: gw_bot_taper_pres
 
   ! Maximum wave number and width of spectrum bins.
   integer :: pgwv = -1
@@ -281,7 +277,7 @@ subroutine gw_drag_cam_readnl(nlfile)
        rdg_gamma_cd_llb, trpd_leewv_rdg_gamma, bnd_rdggm, &
        gw_oro_south_fac, gw_limit_tau_without_eff, &
        gw_lndscl_sgh, gw_prndl, gw_apply_tndmax, gw_qbo_hdepth_scaling, &
-       gw_top_taper, front_gaussian_width, alpha_gw_movmtn, gw_bot_taper_pres, use_gw_rdg_resid, &
+       gw_top_taper, front_gaussian_width, alpha_gw_movmtn, use_gw_rdg_resid, &
        effgw_rdg_resid, effgw_movmtn_pbl, movmtn_source, movmtn_psteer, &
        movmtn_plaunch
 
@@ -372,9 +368,6 @@ subroutine gw_drag_cam_readnl(nlfile)
   call mpi_bcast(gw_top_taper, 1, mpi_logical, mstrid, mpicom, ierr)
   if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: gw_top_taper")
 
-  call mpi_bcast(gw_bot_taper_pres, 1, mpi_real8, mstrid, mpicom, ierr)
-  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: gw_bot_taper_pres")
-
   call mpi_bcast(gw_lndscl_sgh, 1, mpi_logical, mstrid, mpicom, ierr)
   if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: gw_lndscl_sgh")
   call mpi_bcast(gw_prndl, 1, mpi_real8, mstrid, mpicom, ierr)
@@ -418,11 +411,6 @@ subroutine gw_drag_cam_readnl(nlfile)
   call shr_assert(gw_dc /= unset_r8, &
        "gw_drag_cam_readnl: gw_dc must be set via the namelist."// &
        errMsg(__FILE__, __LINE__))
-
-  band_oro = GWBand(0, gw_dc, fcrit2, wavelength_mid)
-  band_mid = GWBand(pgwv, gw_dc, 1.0_r8, wavelength_mid)
-  band_long = GWBand(pgwv_long, gw_dc_long, 1.0_r8, wavelength_long)
-  band_movmtn = GWBand(0, gw_dc, 1.0_r8, wavelength_mid)
 
   if (use_gw_rdg_gamma .or. use_gw_rdg_beta) then
      call gw_rdg_cam_readnl(nlfile)
@@ -497,38 +485,119 @@ subroutine gw_drag_cam_init()
   character(len=512)              :: errormsg
   integer                         :: errorflg
 
-
   !-----------------------------------------------------------------------
+
 
   if (do_molec_diff) then
      kvt_idx     = pbuf_get_index('kvt')
   end if
 
-  if (masterproc) then
-     write(iulog,*) ' '
-     write(iulog,*) "GW_DRAG: band_mid%ngwv = ", band_mid%ngwv
-     do l = -band_mid%ngwv, band_mid%ngwv
-        write (iulog,'(A,I0,A,F7.2)') &
-             "GW_DRAG: band_mid%cref(",l,") = ",band_mid%cref(l)
+  if (do_molec_diff) then
+     !--------------------------------------------------------
+     ! Initialize and calculate local molecular diffusivity
+     !--------------------------------------------------------
+
+     call pbuf_get_field(pbuf, kvt_idx, kvt_in)  ! kvt_in(1:pcols,1:pver+1)
+
+     ! Set kvtt from pbuf field; kvtt still needs a factor of 1/cpairv.
+     kvtt = kvt_in(:ncol,:)
+
+     ! Use linear extrapolation of cpairv to top interface.
+     kvtt(:,1) = kvtt(:,1) / &
+          (1.5_r8*cpairv(:ncol,1,lchnk) - &
+          0.5_r8*cpairv(:ncol,2,lchnk))
+
+     ! Interpolate cpairv to other interfaces.
+     do k = 2, nbot_molec
+        kvtt(:,k) = kvtt(:,k) / &
+             (cpairv(:ncol,k+1,lchnk)+cpairv(:ncol,k,lchnk)) * 2._r8
      enddo
-     write(iulog,*) 'GW_DRAG: band_mid%kwv = ', band_mid%kwv
-     write(iulog,*) 'GW_DRAG: band_mid%fcrit2 = ', band_mid%fcrit2
-     write(iulog,*) ' '
-     write(iulog,*) "GW_DRAG: band_long%ngwv = ", band_long%ngwv
-     do l = -band_long%ngwv, band_long%ngwv
-        write (iulog,'(A,I2,A,F7.2)') &
-             "GW_DRAG: band_long%cref(",l,") = ",band_long%cref(l)
-     enddo
-     write(iulog,*) 'GW_DRAG: band_long%kwv = ', band_long%kwv
-     write(iulog,*) 'GW_DRAG: band_long%fcrit2 = ', band_long%fcrit2
-     write(iulog,*) ' '
+
+  else
+
+     kvtt = 0._r8
+
   end if
+
+  call gw_drag_init( &
+       pver,  &
+       gravit,  &
+       rair,  &
+       pi,  &
+       pgwv,  &
+       gw_dc,  &
+       pgwv_long,  &
+       gw_dc_long,  &
+       tau_0_ubc,  &
+       pref_edge,  &
+       pref_mid,  &
+       effgw_beres_dp,  &
+       effgw_beres_sh,  &
+       effgw_cm,  &
+       effgw_cm_igw,  &
+       effgw_oro,  &
+       fcrit2,  &
+       frontgfc,  &
+       gw_drag_file,  &
+       gw_drag_file_sh,  &
+       gw_drag_file_mm,  &
+       taubgnd,  &
+       taubgnd_igw,  &
+       gw_polar_taper,  &
+       use_gw_rdg_beta,  &
+       n_rdg_beta,  &
+       effgw_rdg_beta,  &
+       effgw_rdg_beta_max,  &
+       rdg_beta_cd_llb,  &
+       trpd_leewv_rdg_beta,  &
+       use_gw_rdg_gamma,  &
+       n_rdg_gamma,  &
+       effgw_rdg_gamma,  &
+       effgw_rdg_gamma_max,  &
+       rdg_gamma_cd_llb,  &
+       trpd_leewv_rdg_gamma,  &
+       bnd_rdggm,  &
+       gw_oro_south_fac,  &
+       gw_limit_tau_without_eff,  &
+       gw_lndscl_sgh,  &
+       gw_prndl,  &
+       gw_apply_tndmax,  &
+       gw_qbo_hdepth_scaling,  &
+       gw_top_taper,  &
+       front_gaussian_width,  &
+       alpha_gw_movmtn,  &
+       effgw_rdg_resid, &
+       effgw_movmtn_pbl, &
+       movmtn_source, &
+       movmtn_psteer, &
+       movmtn_plaunch, &
+       use_gw_front,  &
+       use_gw_rdg_resid, &
+       use_gw_oro,  &
+       use_gw_front_igw,  &
+       use_gw_convect_dp,  &
+       use_gw_convect_sh,  &
+       use_simple_phys,  &
+       use_gw_movmtn_pbl, &
+       iulog,  &
+       ktop,  &
+       masterproc, &
+       do_molec_diff,  &
+       wavelength_mid,  &
+       wavelength_long,  &
+       errormsg,  &
+       errorflg )
+
 
   ! Used to decide whether temperature tendencies should be output.
   call phys_getopts( history_budget_out = history_budget, &
        history_budget_histfile_num_out = history_budget_histfile_num, &
        history_waccm_out = history_waccm, &
        history_amwg_out   = history_amwg  )
+
+  ! Totals that accumulate over different sources.
+  egwdffi_tot = 0._r8
+  flx_heat = 0._r8
 
   if ( use_gw_oro ) then
 
@@ -576,74 +645,117 @@ subroutine gw_drag_cam_init()
 
   end if
 
-  if (use_gw_rdg_beta .or. use_gw_rdg_gamma) then
-     grid_id = cam_grid_id('physgrid')
-     if (.not. cam_grid_check(grid_id)) then
-        call endrun(sub//': ERROR: no "physgrid" grid')
+  ! ========= GW Ridge Beta initialization! ==========================
+  call getfil(bnd_topo, bnd_topo_loc)
+  call gw_drag_cam_rdg_beta_init(use_gw_rdg_beta, bnd_topo_loc)
+
+  ! ========= GW Ridge Gamma initialization! ==========================
+  call getfil(bnd_rdggm, bnd_rdggm_loc, iflag=1, lexist=found)
+  call gw_drag_cam_rdg_gamma_init(use_gw_rdg_gamma, bnd_rdggm_loc)
+
+  ! ========= gw front initialization! ==========================
+  if (use_gw_front .or. use_gw_front_igw) then
+
+     frontgf_idx = pbuf_get_index('FRONTGF')
+     frontga_idx = pbuf_get_index('FRONTGA')
+
+     call shr_assert(unset_r8 /= frontgfc, &
+          "gw_init: Frontogenesis enabled, but frontgfc was &
+          & not set!"// &
+          errMsg(__FILE__, __LINE__))
+
+     call addfld ('FRONTGF', (/ 'lev' /), 'A', 'K^2/M^2/S', &
+          'Frontogenesis function at gws src level')
+     call addfld ('FRONTGFA', (/ 'lev' /), 'A', 'K^2/M^2/S', &
+          'Frontogenesis function at gws src level')
+
+     if (history_waccm) then
+        call add_default('FRONTGF', 1, ' ')
+        call add_default('FRONTGFA', 1, ' ')
      end if
-     call cam_grid_get_dim_names(grid_id, dim1name, dim2name)
+
   end if
 
+  ! ========= Moving Mountain initialization! ==========================
+  call gw_drag_cam_movmtn_init(use_gw_movmtn_pbl, gw_drag_file_mm,movmtn_psteer, movmtn_plaunch, movmtn_source)
+
+  ! ========= Convect Deep/Shallow initialization! ==========================
+  call gw_drag_cam_beres_init(use_gw_convect_dp,use_gw_convect_sh, gw_drag_file, gw_drag_file_sh, pref_edge)
+
+  ! ========= Convect Beta/Gamma initialization! ==========================
+  call gw_drag_cam_rdg_init(use_gw_convect_dp,use_gw_convect_sh, use_gw_rdg_gamma, bnd_rdggm_loc)gw_drag_file, gw_drag_file_sh, pref_edge)
+
+  call addfld ('EKGW' ,(/ 'ilev' /), 'A','M2/S', &
+       'Effective Kzz due to diffusion by gravity waves')
+
+  if (history_waccm) then
+     call add_default('EKGW', 1, ' ')
+  end if
+
+  call addfld ('UTGW_TOTAL',    (/ 'lev' /), 'A','m s-2', &
+       'Total U tendency due to gravity wave drag')
+  call addfld ('VTGW_TOTAL',    (/ 'lev' /), 'A','m s-2', &
+       'Total V tendency due to gravity wave drag')
+  call register_vector_field('UTGW_TOTAL', 'VTGW_TOTAL')
+
+  ! Total temperature tendency output.
+  call addfld ('TTGW', (/ 'lev' /), 'A', 'K s-1',  &
+       'T tendency - gravity wave drag')
+
+  ! Water budget terms.
+  call addfld('QTGW',(/ 'lev' /), 'A','kg/kg/s', &
+       'Q tendency - gravity wave drag')
+  call addfld('CLDLIQTGW',(/ 'lev' /), 'A','kg/kg/s', &
+       'CLDLIQ tendency - gravity wave drag')
+  call addfld('CLDICETGW',(/ 'lev' /), 'A','kg/kg/s', &
+       'CLDICE tendency - gravity wave drag')
+
+  if ( history_budget ) then
+     call add_default('TTGW', history_budget_histfile_num, ' ')
+     call add_default('QTGW', history_budget_histfile_num, ' ')
+     call add_default('CLDLIQTGW', history_budget_histfile_num, ' ')
+     call add_default('CLDICETGW', history_budget_histfile_num, ' ')
+  end if
+
+  ! Get indices to actually output the above.
+  call cnst_get_ind("CLDLIQ", ixcldliq)
+  call cnst_get_ind("CLDICE", ixcldice)
+
+
+end subroutine gw_drag_cam_init
+
+!==========================================================================
+
+subroutine gw_drag_cam_rdg_init(use_gw_rdg_beta ,use_gw_rdg_gamma, bnd_topo_loc, bnd_rdggm_loc)
+  use pio, only: file_desc_t, pio_nowrite, pio_inq_varid, pio_get_var, &
+       pio_closefile
+  use cam_pio_utils, only: cam_pio_openfile
+
+  character(len=*), intent(in) :: file_name
+  type(GWBand), intent(in) :: band
+
+  type(BeresSourceDesc), intent(inout) :: desc
+
+  type(file_desc_t) :: gw_file_desc
+
+  ! PIO variable ids and error code.
+  integer :: mfccid, hdid, stat
+
+  ! Number of wavenumbers in the input file.
+  integer :: ngwv_file
+
+  ! Full path to gw_drag_file.
+  character(len=cl) :: file_path
+
+  character(len=cl) :: msg
+
+  !----------------------------------------------------------------------
+  ! read in look-up table for source spectra
+  !-----------------------------------------------------------------------
+
+  call gw_rdg_init(use_gw_rdg_beta ,use_gw_rdg_gamma, bnd_topo_loc, bnd_rdggm_loc)
+
   if (use_gw_rdg_beta) then
-
-     if (effgw_rdg_beta == unset_r8) then
-        call endrun(sub//": ERROR: Anisotropic OGW enabled, &
-                     &but effgw_rdg_beta was not set.")
-     end if
-
-     fh_topo => topo_file_get_id()
-     bnd_topo_loc = ' '
-     if (.not. associated(fh_topo)) then
-
-        ! Try to open topo file here.  This workaround will not be needed
-        ! once the refactored initialization sequence is on trunk.
-
-        allocate(fh_topo)
-        ! Error exit is from getfil if file not found.
-        call getfil(bnd_topo, bnd_topo_loc)
-        call cam_pio_openfile(fh_topo, bnd_topo_loc, PIO_NOWRITE)
-
-     end if
-
-     ! Get beta ridge data
-     allocate( &
-        rdg_gbxar(pcols,begchunk:endchunk),      &
-        rdg_hwdth(pcols,prdg,begchunk:endchunk), &
-        rdg_clngt(pcols,prdg,begchunk:endchunk), &
-        rdg_mxdis(pcols,prdg,begchunk:endchunk), &
-        rdg_anixy(pcols,prdg,begchunk:endchunk), &
-        rdg_angll(pcols,prdg,begchunk:endchunk)  )
-
-     call infld('GBXAR', fh_topo, dim1name, dim2name, 1, pcols, &
-                         begchunk, endchunk, rdg_gbxar, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: GBXAR not found on topo file')
-
-     rdg_gbxar = rdg_gbxar * (rearth/1000._r8)*(rearth/1000._r8) ! transform to km^2
-
-     call infld('HWDTH', fh_topo, dim1name, 'nrdg', dim2name, 1, pcols, &
-                1, prdg, begchunk, endchunk, rdg_hwdth, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: HWDTH not found on topo file')
-
-     call infld('CLNGT', fh_topo, dim1name, 'nrdg', dim2name, 1, pcols, &
-                1, prdg, begchunk, endchunk, rdg_clngt, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: CLNGT not found on topo file')
-
-     call infld('MXDIS', fh_topo, dim1name, 'nrdg', dim2name, 1, pcols, &
-                1, prdg, begchunk, endchunk, rdg_mxdis, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: MXDIS not found on topo file')
-
-     call infld('ANIXY', fh_topo, dim1name, 'nrdg', dim2name, 1, pcols, &
-                1, prdg, begchunk, endchunk, rdg_anixy, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: ANIXY not found on topo file')
-
-     call infld('ANGLL', fh_topo, dim1name, 'nrdg', dim2name, 1, pcols, &
-                1, prdg, begchunk, endchunk, rdg_angll, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: ANGLL not found on topo file')
-
-     ! close topo file only if it was opened here
-     if (len_trim(bnd_topo_loc) > 0) then
-        call pio_closefile(fh_topo)
-     end if
 
      call addfld ('WBR_HT1',     horiz_only,  'I','m', &
           'Wave breaking height for DSW')
@@ -728,68 +840,38 @@ subroutine gw_drag_cam_init()
         call add_default('TAUARDGBETAX', 1, ' ')
         call add_default('TAUARDGBETAY  ', 1, ' ')
      end if
-  else
-     ! Get meso-gamma ridge data
-     allocate( &
-        rdg_gbxar(0,0),     &
-        rdg_hwdth(0,0,0), &
-        rdg_clngt(0,0,0), &
-        rdg_mxdis(0,0,0), &
-        rdg_anixy(0,0,0), &
-        rdg_angll(0,0,0))
   end if
+end subroutine gw_drag_cam_rdg_beta_init
+
+!==========================================================================
+
+subroutine gw_drag_cam_rdg_gamma_init(use_gw_rdg_gamma, bnd_topo_loc)
+
+  character(len=*), intent(in) :: file_name
+  type(GWBand), intent(in) :: band
+
+  type(BeresSourceDesc), intent(inout) :: desc
+
+  type(file_desc_t) :: gw_file_desc
+
+  ! PIO variable ids and error code.
+  integer :: mfccid, hdid, stat
+
+  ! Number of wavenumbers in the input file.
+  integer :: ngwv_file
+
+  ! Full path to gw_drag_file.
+  character(len=cl) :: file_path
+
+  character(len=cl) :: msg
 
   if (use_gw_rdg_gamma) then
 
-     if (effgw_rdg_gamma == unset_r8) then
-        call endrun(sub//": ERROR: Anisotropic OGW enabled, but effgw_rdg_gamma was not set.")
-     end if
+     !----------------------------------------------------------------------
+     ! read in look-up table for source spectra
+     !-----------------------------------------------------------------------
 
-     call getfil(bnd_rdggm, bnd_rdggm_loc, iflag=1, lexist=found)
-     if (found) then
-        call cam_pio_openfile(fh_rdggm, bnd_rdggm_loc, PIO_NOWRITE)
-     else
-        call endrun(sub//': ERROR: file for gamma ridges not found: bnd_rdggm='// &
-                   trim(bnd_rdggm))
-     end if
-
-     if (.not. allocated(rdg_gbxar)) then
-        allocate(rdg_gbxar(pcols,begchunk:endchunk))
-        call infld('GBXAR', fh_rdggm, dim1name, dim2name, 1, pcols, &
-                            begchunk, endchunk, rdg_gbxar, found, gridname='physgrid')
-        if (.not. found) call endrun(sub//': ERROR: GBXAR not found on bnd_rdggm')
-        rdg_gbxar = rdg_gbxar * (rearth/1000._r8)*(rearth/1000._r8) ! transform to km^2
-     end if
-
-     ! Get meso-gamma ridge data
-     allocate( &
-        rdg_hwdthg(pcols,prdg,begchunk:endchunk), &
-        rdg_clngtg(pcols,prdg,begchunk:endchunk), &
-        rdg_mxdisg(pcols,prdg,begchunk:endchunk), &
-        rdg_anixyg(pcols,prdg,begchunk:endchunk), &
-        rdg_angllg(pcols,prdg,begchunk:endchunk)  )
-
-     call infld('HWDTH', fh_rdggm, dim1name, 'nrdg', dim2name, 1, pcols, &
-                1, prdg, begchunk, endchunk, rdg_hwdthg, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: HWDTH not found on bnd_rdggm')
-
-     call infld('CLNGT', fh_rdggm, dim1name, 'nrdg', dim2name, 1, pcols, &
-                1, prdg, begchunk, endchunk, rdg_clngtg, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: CLNGT not found on bnd_rdggm')
-
-     call infld('MXDIS', fh_rdggm, dim1name, 'nrdg', dim2name, 1, pcols, &
-                1, prdg, begchunk, endchunk, rdg_mxdisg, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: MXDIS not found on bnd_rdggm')
-
-     call infld('ANIXY', fh_rdggm, dim1name, 'nrdg', dim2name, 1, pcols, &
-                1, prdg, begchunk, endchunk, rdg_anixyg, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: ANIXY not found on bnd_rdggm')
-
-     call infld('ANGLL', fh_rdggm, dim1name, 'nrdg', dim2name, 1, pcols, &
-                1, prdg, begchunk, endchunk, rdg_angllg, found, gridname='physgrid')
-     if (.not. found) call endrun(sub//': ERROR: ANGLL not found on bnd_rdggm')
-
-     call pio_closefile(fh_rdggm)
+     call gw_drag_rdg_gamma_init(use_gw_rdg_beta, bnd_topo_loc)
 
      call addfld ('TAU1RDGGAMMAM' , (/ 'ilev' /) , 'I'  ,'N m-2' , &
           'Ridge based momentum flux profile')
@@ -826,126 +908,96 @@ subroutine gw_drag_cam_init()
      call addfld ('VTRDGGM' , (/ 'lev' /) , 'I'  ,'m s-1' , &
           'V wind tendency from ridge 6     ')
      call register_vector_field('UTRDGGM','VTRDGGM')
-  else
-          ! Get meso-gamma ridge data
-     allocate( &
-        rdg_gbxarg(0,0),     &
-        rdg_hwdthg(0,0,0), &
-        rdg_clngtg(0,0,0), &
-        rdg_mxdisg(0,0,0), &
-        rdg_anixyg(0,0,0), &
-        rdg_angllg(0,0,0))
-
   end if
+end subroutine gw_drag_cam_rdg_gamma_init
+!==========================================================================
 
-  if (use_gw_front .or. use_gw_front_igw) then
+subroutine gw_drag_cam_beres_init(use_gw_convect_dp,use_gw_convect_sh, gw_drag_file_dp, gw_drag_file_sh, pref_edge)
 
-     frontgf_idx = pbuf_get_index('FRONTGF')
-     frontga_idx = pbuf_get_index('FRONTGA')
+     call getfil(gw_drag_file_sh, gw_drag_file_sh_path)
+     call getfil(gw_drag_file_dp, gw_drag_file_dp_path)
+     call gw_beres_init(gw_drag_file_sh_path, gw_drag_file_dp_path, pref_edge, wavelength_mid, use_gw_convect_dp,use_gw_convect_sh, masterproc, iulog, errmsg, errflg )
 
-     call shr_assert(unset_r8 /= frontgfc, &
-          "gw_init: Frontogenesis enabled, but frontgfc was &
-          & not set!"// &
-          errMsg(__FILE__, __LINE__))
+     if (use_gw_convect_dp) then
+        ! Output for gravity waves from the Beres scheme (deep).
+        call gw_spec_addflds(prefix=beres_dp_pf, scheme="Beres (deep)", &
+             pgwv, gw_dc, history_defaults=history_waccm)
 
+        call addfld ('NETDT',(/ 'lev' /), 'A','K s-1', &
+             'Net heating rate')
+        call addfld ('MAXQ0',horiz_only  ,  'A','K day-1', &
+             'Max column heating rate')
+        call addfld ('HDEPTH',horiz_only,    'A','km', &
+             'Heating Depth')
 
-     do k = 0, pver
-        ! Check frontogenesis at 600 hPa.
-        if (pref_edge(k+1) < 60000._r8) kfront = k+1
-     end do
-
-     ! Source waves from 500 hPa.
-     kbot_front = maxloc(pref_edge, 1, (pref_edge < 50000._r8)) - 1
-
-     if (masterproc) then
-        write (iulog,*) 'KFRONT      =',kfront
-        write (iulog,*) 'KBOT_FRONT  =',kbot_front
-        write(iulog,*) ' '
+        if (history_waccm) then
+           call add_default('NETDT    ', 1, ' ')
+           call add_default('HDEPTH   ', 1, ' ')
+           call add_default('MAXQ0    ', 1, ' ')
+        end if
      end if
 
-     call addfld ('FRONTGF', (/ 'lev' /), 'A', 'K^2/M^2/S', &
-          'Frontogenesis function at gws src level')
-     call addfld ('FRONTGFA', (/ 'lev' /), 'A', 'K^2/M^2/S', &
-          'Frontogenesis function at gws src level')
+     if (use_gw_convect_sh) then
+        ! Output for gravity waves from the Beres scheme (shallow).
+        call gw_spec_addflds(prefix=beres_sh_pf, scheme="Beres (shallow)", &
+             pgwv, gw_dc, history_defaults=history_waccm)
 
-     if (history_waccm) then
-        call add_default('FRONTGF', 1, ' ')
-        call add_default('FRONTGFA', 1, ' ')
+        call addfld ('SNETDT',(/ 'lev' /), 'A','K s-1', &
+             'Net heating rate')
+        call addfld ('SMAXQ0',horiz_only  ,  'A','K day-1', &
+             'Max column heating rate')
+        call addfld ('SHDEPTH',horiz_only,    'A','km', &
+             'Heating Depth')
+
+        if (history_waccm) then
+           call add_default('SNETDT   ', 1, ' ')
+           call add_default('SHDEPTH  ', 1, ' ')
+           call add_default('SMAXQ0   ', 1, ' ')
+        end if
      end if
 
-  end if
+end subroutine gw_drag_cam_beres_init
 
+!==============================================================
+subroutine gw_drag_cam_movmtn_init(file_name, band, desc, psteer, plaunch, source)
 
-  if (use_gw_front) then
+  use ioFileMod, only: getfil
+  use pio, only: file_desc_t, pio_nowrite, pio_inq_varid, pio_get_var, &
+       pio_closefile
+  use cam_pio_utils, only: cam_pio_openfile
+  use ref_pres,   only: pref_edge
 
-     call shr_assert(all(unset_r8 /= [ effgw_cm, taubgnd ]), &
-          "gw_init: Frontogenesis mid-scale waves enabled, but not &
-          &all required namelist variables were set!"// &
-          errMsg(__FILE__, __LINE__))
+  character(len=*), intent(in) :: file_name
+  type(GWBand), intent(in) :: band
 
-     if (masterproc) then
-        write(iulog,*) 'gw_init: gw spectrum taubgnd, ', &
-             'effgw_cm = ',taubgnd, effgw_cm
-        write(iulog,*) ' '
-     end if
+  type(MovMtnSourceDesc), intent(inout) :: desc
+  real(r8), intent(in) :: psteer
+  real(r8), intent(in) :: plaunch
+  integer, intent(in)  :: source
 
+  type(file_desc_t) :: gw_file_desc
 
-     cm_desc = gaussian_cm_desc(band_mid, kbot_front, kfront, frontgfc, &
-          taubgnd, front_gaussian_width)
+  ! PIO variable ids and error code.
+  integer :: mfccid, uhid, hdid, stat
 
+  ! Number of wavenumbers in the input file.
+  integer :: ngwv_file
 
-!!$     ! Output for gravity waves from frontogenesis.
-!!$     call gw_spec_addflds(prefix=cm_pf, scheme="C&M", band=band_mid, &
-!!$          history_defaults=history_waccm)
+  ! Full path to gw_drag_file.
+  character(len=cl) :: file_path
+  character(len=cl) :: msg
 
-  else
-     ! allocate these to 0 for passing to sima
-     allocate( cm_desc%src_tau(0))
-  end if
+  character(len=512):: errormsg
+  integer           :: errorflg
 
-  if (use_gw_front_igw) then
-
-     call shr_assert(all(unset_r8 /= [ effgw_cm_igw, taubgnd_igw ]), &
-          "gw_init: Frontogenesis inertial waves enabled, but not &
-          &all required namelist variables were set!"// &
-          errMsg(__FILE__, __LINE__))
-
-     if (masterproc) then
-        write(iulog,*) 'gw_init: gw spectrum taubgnd_igw, ', &
-             'effgw_cm_igw = ',taubgnd_igw, effgw_cm_igw
-        write(iulog,*) ' '
-     end if
-
-     cm_igw_desc = gaussian_cm_desc(band_long, kbot_front, kfront, frontgfc, &
-          taubgnd_igw, front_gaussian_width)
-
-!!$     ! Output for gravity waves from frontogenesis.
-!!$     call gw_spec_addflds(prefix=cm_igw_pf, scheme="C&M IGW", &
-!!$          band=band_long, history_defaults=history_waccm)
-
-  else
-     ! allocate these to 0 for passing to sima
-     allocate(cm_igw_desc%src_tau(0))
-  end if
-
-  ! ========= Moving Mountain initialization! ==========================
   if (use_gw_movmtn_pbl) then
 
-     ! get pbuf indices for CLUBB couplings
-     ttend_clubb_idx     = pbuf_get_index('TTEND_CLUBB')
-     thlp2_clubb_gw_idx  = pbuf_get_index('THLP2_CLUBB_GW')
-     upwp_clubb_gw_idx   = pbuf_get_index('UPWP_CLUBB_GW')
-     vpwp_clubb_gw_idx   = pbuf_get_index('VPWP_CLUBB_GW')
-     wpthlp_clubb_gw_idx  = pbuf_get_index('WPTHLP_CLUBB_GW')
+     call getfil(file_name, file_path)
+     call gw_movmtn_init( pver, file_path, &
+          gw_dc, wavelength_mid, &
+          pref_edge, psteer, plaunch, source, masterproc, iulog, errormsg, errorflg )
+
      vort4gw_idx = pbuf_get_index('VORT4GW')
-
-     ! Confirm moving mountain file is enabled
-     call shr_assert(trim(gw_drag_file_mm) /= "", &
-          "gw_init: No gw_drag_file provided for DP GW moving mountain lookup &
-          &table. Set this via namelist."// &
-          errMsg(__FILE__, __LINE__))
-
-     call gw_drag_cam_movmtn_init(gw_drag_file_mm, band_movmtn, movmtn_desc, movmtn_psteer, movmtn_plaunch, movmtn_source)
 
      call addfld ('VORT4GW', (/ 'lev' /), 'A', 's-1', &
           'Vorticity')
@@ -993,527 +1045,11 @@ subroutine gw_drag_cam_init()
           'Gravity Wave Moving Mountain - Y-momflux from CLUBB to GW')
      call addfld ('XPWP_SRC_MOVMTN',horiz_only,'I','m+2 s-2', &
           'Gravity Wave Moving Mountain - flux source for moving mtn')
-  else
-     allocate( movmtn_desc%hd(0), &
-          movmtn_desc%uh(0), &
-          movmtn_desc%mfcc(0,0,0))
   end if
 
-  if (use_gw_convect_dp) then
-
-     ttend_dp_idx    = pbuf_get_index('TTEND_DP')
-
-     ! Set the deep scheme specification components.
-     beres_dp_desc%storm_shift = .true.
-
-     do k = 0, pver
-        ! 700 hPa index
-        if (pref_edge(k+1) < 70000._r8) beres_dp_desc%k = k+1
-     end do
-
-     if (masterproc) then
-        write (iulog,*) 'Beres deep level =',beres_dp_desc%k
-     end if
-
-     ! Don't use deep convection heating depths below this limit.
-     ! This is important for QBO. Bad result if left at 2.5 km.
-     beres_dp_desc%min_hdepth = 1000._r8
-
-     ! Read Beres file.
-
-     call shr_assert(trim(gw_drag_file) /= "", &
-          "gw_init: No gw_drag_file provided for Beres deep &
-          &scheme. Set this via namelist."// &
-          errMsg(__FILE__, __LINE__))
-
-     call gw_drag_cam_beres_init(gw_drag_file, band_mid, beres_dp_desc)
-
-!!$     ! Output for gravity waves from the Beres scheme (deep).
-!!$     call gw_spec_addflds(prefix=beres_dp_pf, scheme="Beres (deep)", &
-!!$          band=band_mid, history_defaults=history_waccm)
-
-     call addfld ('NETDT',(/ 'lev' /), 'A','K s-1', &
-          'Net heating rate')
-     call addfld ('MAXQ0',horiz_only  ,  'A','K day-1', &
-          'Max column heating rate')
-     call addfld ('HDEPTH',horiz_only,    'A','km', &
-          'Heating Depth')
-
-     if (history_waccm) then
-        call add_default('NETDT    ', 1, ' ')
-        call add_default('HDEPTH   ', 1, ' ')
-        call add_default('MAXQ0    ', 1, ' ')
-     end if
-
-  else
-     ! allocate these to 0 for passing to sima
-     allocate( &
-          beres_dp_desc%hd(0), &
-          beres_dp_desc%mfcc(0,0,0))
-  end if
-
-  if (use_gw_convect_sh) then
-
-     ttend_sh_idx    = pbuf_get_index('TTEND_SH')
-
-     ! Set the shallow scheme specification components.
-     beres_sh_desc%storm_shift = .false.
-
-     do k = 0, pver
-        ! 900 hPa index
-        if (pref_edge(k+1) < 90000._r8) beres_sh_desc%k = k+1
-     end do
-
-     if (masterproc) then
-        write (iulog,*) 'Beres shallow level =',beres_sh_desc%k
-     end if
-
-     ! Use all heating depths for shallow convection.
-     beres_sh_desc%min_hdepth = 0._r8
-
-     ! Read Beres file.
-
-     call shr_assert(trim(gw_drag_file_sh) /= "", &
-          "gw_init: No gw_drag_file_sh provided for Beres shallow &
-          &scheme. Set this via namelist."// &
-          errMsg(__FILE__, __LINE__))
-
-     call gw_drag_cam_beres_init(gw_drag_file_sh, band_mid, beres_sh_desc)
-
-!!$     ! Output for gravity waves from the Beres scheme (shallow).
-!!$     call gw_spec_addflds(prefix=beres_sh_pf, scheme="Beres (shallow)", &
-!!$          band=band_mid, history_defaults=history_waccm)
-!!$
-     call addfld ('SNETDT',(/ 'lev' /), 'A','K s-1', &
-          'Net heating rate')
-     call addfld ('SMAXQ0',horiz_only  ,  'A','K day-1', &
-          'Max column heating rate')
-     call addfld ('SHDEPTH',horiz_only,    'A','km', &
-          'Heating Depth')
-
-     if (history_waccm) then
-        call add_default('SNETDT   ', 1, ' ')
-        call add_default('SHDEPTH  ', 1, ' ')
-        call add_default('SMAXQ0   ', 1, ' ')
-     end if
-  else
-     ! allocate these to 0 for passing to sima
-     allocate( &
-          beres_sh_desc%hd(0), &
-          beres_sh_desc%mfcc(0,0,0))
-  end if
-
-  call addfld ('EKGW' ,(/ 'ilev' /), 'A','M2/S', &
-       'Effective Kzz due to diffusion by gravity waves')
-
-  if (history_waccm) then
-     call add_default('EKGW', 1, ' ')
-  end if
-
-  call addfld ('UTGW_TOTAL',    (/ 'lev' /), 'A','m s-2', &
-       'Total U tendency due to gravity wave drag')
-  call addfld ('VTGW_TOTAL',    (/ 'lev' /), 'A','m s-2', &
-       'Total V tendency due to gravity wave drag')
-  call register_vector_field('UTGW_TOTAL', 'VTGW_TOTAL')
-
-  ! Total temperature tendency output.
-  call addfld ('TTGW', (/ 'lev' /), 'A', 'K s-1',  &
-       'T tendency - gravity wave drag')
-
-  ! Water budget terms.
-  call addfld('QTGW',(/ 'lev' /), 'A','kg/kg/s', &
-       'Q tendency - gravity wave drag')
-  call addfld('CLDLIQTGW',(/ 'lev' /), 'A','kg/kg/s', &
-       'CLDLIQ tendency - gravity wave drag')
-  call addfld('CLDICETGW',(/ 'lev' /), 'A','kg/kg/s', &
-       'CLDICE tendency - gravity wave drag')
-
-  if ( history_budget ) then
-     call add_default('TTGW', history_budget_histfile_num, ' ')
-     call add_default('QTGW', history_budget_histfile_num, ' ')
-     call add_default('CLDLIQTGW', history_budget_histfile_num, ' ')
-     call add_default('CLDICETGW', history_budget_histfile_num, ' ')
-  end if
-
-  ! Get indices to actually output the above.
-  call cnst_get_ind("CLDLIQ", ixcldliq)
-  call cnst_get_ind("CLDICE", ixcldice)
-
-  ! for inactive gw parameters allocate 0 array size for passing to CCPP routines
-  if (ttend_dp_idx == -1) allocate(ttend_dp(0,0))
-  if (ttend_sh_idx == -1) allocate(ttend_sh(0,0))
-  if (ttend_clubb_idx == -1) allocate(ttend_clubb(0,0))
-  if (upwp_clubb_gw_idx == -1) allocate(upwp_clubb_gw(0,0))
-  if (vpwp_clubb_gw_idx == -1) allocate(vpwp_clubb_gw(0,0))
-  if (thlp2_clubb_gw_idx == -1) allocate(thlp2_clubb_gw(0,0))
-  if (wpthlp_clubb_gw_idx == -1) allocate(wpthlp_clubb_gw(0,0))
-  if (vort4gw_idx == -1) allocate(vort4gw(0,0))
-
-  call gw_drag_init( &
-       pver,  &
-       gravit,  &
-       rair,  &
-       pi,  &
-       pgwv,  &
-       gw_dc,  &
-       pgwv_long,  &
-       gw_dc_long,  &
-       tau_0_ubc,  &
-       pref_edge,  &
-       pref_mid,  &
-       gw_bot_taper_pres,  &
-       effgw_beres_dp,  &
-       effgw_beres_sh,  &
-       effgw_cm,  &
-       effgw_cm_igw,  &
-       effgw_oro,  &
-       fcrit2,  &
-       frontgfc,  &
-       gw_drag_file,  &
-       gw_drag_file_sh,  &
-       gw_drag_file_mm,  &
-       taubgnd,  &
-       taubgnd_igw,  &
-       gw_polar_taper,  &
-       use_gw_rdg_beta,  &
-       n_rdg_beta,  &
-       effgw_rdg_beta,  &
-       effgw_rdg_beta_max,  &
-       rdg_beta_cd_llb,  &
-       trpd_leewv_rdg_beta,  &
-       use_gw_rdg_gamma,  &
-       n_rdg_gamma,  &
-       effgw_rdg_gamma,  &
-       effgw_rdg_gamma_max,  &
-       rdg_gamma_cd_llb,  &
-       trpd_leewv_rdg_gamma,  &
-       bnd_rdggm,  &
-       gw_oro_south_fac,  &
-       gw_limit_tau_without_eff,  &
-       gw_lndscl_sgh,  &
-       gw_prndl,  &
-       gw_apply_tndmax,  &
-       gw_qbo_hdepth_scaling,  &
-       gw_top_taper,  &
-       front_gaussian_width,  &
-       alpha_gw_movmtn,  &
-       effgw_rdg_resid, &
-       effgw_movmtn_pbl, &
-       movmtn_source, &
-       movmtn_psteer, &
-       movmtn_plaunch, &
-       use_gw_front,  &
-       use_gw_rdg_resid, &
-       use_gw_oro,  &
-       use_gw_front_igw,  &
-       use_gw_convect_dp,  &
-       use_gw_convect_sh,  &
-       use_simple_phys,  &
-       use_gw_movmtn_pbl, &
-       iulog,  &
-       ktop,  &
-       masterproc, &
-       do_molec_diff,  &
-       wavelength_mid,  &
-       wavelength_long,  &
-       beres_dp_desc%storm_shift, &
-       beres_dp_desc%k, &
-       beres_dp_desc%min_hdepth, &
-       beres_dp_desc%maxh, &
-       beres_dp_desc%maxuh, &
-       beres_dp_desc%hd, &
-       beres_dp_desc%mfcc, &
-       beres_sh_desc%storm_shift, &
-       beres_sh_desc%k, &
-       beres_sh_desc%min_hdepth, &
-       beres_sh_desc%maxh, &
-       beres_sh_desc%maxuh, &
-       beres_sh_desc%hd, &
-       beres_sh_desc%mfcc, &
-!!$       movmtn_desc%storm_shift, &
-!!$       movmtn_desc%k, &
-       movmtn_desc%min_hdepth, &
-       movmtn_desc%maxh, &
-       movmtn_desc%maxuh, &
-!!$       movmtn_desc%hd, &
-!!$       movmtn_desc%uh, &
-!!$       movmtn_desc%mfcc, &
-       cm_desc%ksrc, &
-       cm_desc%kfront, &
-       cm_desc%frontgfc, &
-       cm_desc%src_tau, &
-       cm_igw_desc%ksrc, &
-       cm_igw_desc%kfront, &
-       cm_igw_desc%frontgfc, &
-       cm_igw_desc%src_tau, &
-       errormsg,  &
-       errorflg )
-
-
-end subroutine gw_drag_cam_init
-
-!==========================================================================
-
-subroutine gw_drag_cam_beres_init(file_name, band, desc)
-
-  use ioFileMod, only: getfil
-  use pio, only: file_desc_t, pio_nowrite, pio_inq_varid, pio_get_var, &
-       pio_closefile
-  use cam_pio_utils, only: cam_pio_openfile
-
-  character(len=*), intent(in) :: file_name
-  type(GWBand), intent(in) :: band
-
-  type(BeresSourceDesc), intent(inout) :: desc
-
-  type(file_desc_t) :: gw_file_desc
-
-  ! PIO variable ids and error code.
-  integer :: mfccid, hdid, stat
-
-  ! Number of wavenumbers in the input file.
-  integer :: ngwv_file
-
-  ! Full path to gw_drag_file.
-  character(len=cl) :: file_path
-
-  character(len=cl) :: msg
-
-  !----------------------------------------------------------------------
-  ! read in look-up table for source spectra
-  !-----------------------------------------------------------------------
-
-  call getfil(file_name, file_path)
-  call cam_pio_openfile(gw_file_desc, file_path, pio_nowrite)
-
-  ! Get HD (heating depth) dimension.
-
-  desc%maxh = get_pio_dimlen(gw_file_desc, "HD", file_path)
-
-  ! Get MW (mean wind) dimension.
-
-  desc%maxuh = get_pio_dimlen(gw_file_desc, "MW", file_path)
-
-  ! Get PS (phase speed) dimension.
-
-  ngwv_file = get_pio_dimlen(gw_file_desc, "PS", file_path)
-
-  ! Number in each direction is half of total (and minus phase speed of 0).
-  desc%maxuh = (desc%maxuh-1)/2
-  ngwv_file = (ngwv_file-1)/2
-
-  call shr_assert(ngwv_file >= band%ngwv, &
-       "gw_drag_cam_beres_init: PhaseSpeed in lookup table file does not cover the whole &
-       &spectrum implied by the model's ngwv. ")
-
-  ! Allocate hd and get data.
-
-  allocate(desc%hd(desc%maxh), stat=stat, errmsg=msg)
-
-  call shr_assert(stat == 0, &
-       "gw_drag_cam_beres_init: Allocation error (hd): "//msg// &
-       errMsg(__FILE__, __LINE__))
-
-  stat = pio_inq_varid(gw_file_desc,'HD',hdid)
-
-  call handle_pio_error(stat, &
-       'Error finding HD in: '//trim(file_path))
-
-  stat = pio_get_var(gw_file_desc, hdid, start=[1], count=[desc%maxh], &
-       ival=desc%hd)
-
-  call handle_pio_error(stat, &
-       'Error reading HD from: '//trim(file_path))
-
-  ! While not currently documented in the file, it uses kilometers. Convert
-  ! to meters.
-  desc%hd = desc%hd*1000._r8
-
-  ! Allocate mfcc. "desc%maxh" and "desc%maxuh" are from the file, but the
-  ! model determines wavenumber dimension.
-
-  allocate(desc%mfcc(desc%maxh,-desc%maxuh:desc%maxuh,&
-       -band%ngwv:band%ngwv), stat=stat, errmsg=msg)
-
-  call shr_assert(stat == 0, &
-       "gw_drag_cam_beres_init: Allocation error (mfcc): "//msg// &
-       errMsg(__FILE__, __LINE__))
-
-  ! Get mfcc data.
-
-  stat = pio_inq_varid(gw_file_desc,'mfcc',mfccid)
-
-  call handle_pio_error(stat, &
-       'Error finding mfcc in: '//trim(file_path))
-
-  stat = pio_get_var(gw_file_desc, mfccid, &
-       start=[1,1,ngwv_file-band%ngwv+1], count=shape(desc%mfcc), &
-       ival=desc%mfcc)
-
-  call handle_pio_error(stat, &
-       'Error reading mfcc from: '//trim(file_path))
-
-  call pio_closefile(gw_file_desc)
-
-  if (masterproc) then
-
-     write(iulog,*) "Read in source spectra from file."
-     write(iulog,*) "mfcc max, min = ", &
-          maxval(desc%mfcc),", ",minval(desc%mfcc)
-
-  endif
-
-end subroutine gw_drag_cam_beres_init
-
-!==============================================================
-subroutine gw_drag_cam_movmtn_init(file_name, band, desc, psteer, plaunch, source)
-
-  use ioFileMod, only: getfil
-  use pio, only: file_desc_t, pio_nowrite, pio_inq_varid, pio_get_var, &
-       pio_closefile
-  use cam_pio_utils, only: cam_pio_openfile
-  use ref_pres,   only: pref_edge
-
-  character(len=*), intent(in) :: file_name
-  type(GWBand), intent(in) :: band
-
-  type(MovMtnSourceDesc), intent(inout) :: desc
-  real(r8), intent(in) :: psteer
-  real(r8), intent(in) :: plaunch
-  integer, intent(in)  :: source
-
-  type(file_desc_t) :: gw_file_desc
-
-  ! PIO variable ids and error code.
-  integer :: mfccid, uhid, hdid, stat
-
-  ! Number of wavenumbers in the input file.
-  integer :: ngwv_file
-
-  ! Full path to gw_drag_file.
-  character(len=cl) :: file_path
-  character(len=cl) :: msg
-
-  character(len=512):: errormsg
-  integer           :: errorflg
-
-  call gw_movmtn_init( pver, &
-       desc%min_hdepth, &
-       desc%maxh, &
-       desc%maxuh, &
-       gw_dc, wavelength_mid, &
-       pref_edge, psteer, plaunch, source, masterproc, iulog, errormsg, errorflg )
-
-  !----------------------------------------------------------------------
-  ! read in look-up table for source spectra
-  !-----------------------------------------------------------------------
-
-  call getfil(file_name, file_path)
-
-  call cam_pio_openfile(gw_file_desc, file_path, pio_nowrite)
-
-  ! Allocate hd and get data.
-
-  allocate(desc%hd(desc%maxh), stat=stat, errmsg=msg)
-
-  call shr_assert(stat == 0, &
-       "gw_drag_cam_movmtn_init: Allocation error (hd): "//msg// &
-       errMsg(__FILE__, __LINE__))
-
-  stat = pio_inq_varid(gw_file_desc,'HDEPTH',hdid)
-
-  call handle_pio_error(stat, &
-       'Error finding HD in: '//trim(file_path))
-
-  stat = pio_get_var(gw_file_desc, hdid, start=[1], count=[desc%maxh], &
-       ival=desc%hd)
-
-  call handle_pio_error(stat, &
-       'Error reading HD from: '//trim(file_path))
-
-  ! While not currently documented in the file, it uses kilometers. Convert
-  ! to meters.
-  desc%hd = desc%hd*1000._r8
-
- ! Allocate wind and get data.
-
-  allocate(desc%uh(desc%maxuh), stat=stat, errmsg=msg)
-
-  call shr_assert(stat == 0, &
-       "gw_drag_cam_movmtn_init: Allocation error (uh): "//msg// &
-       errMsg(__FILE__, __LINE__))
-
-  stat = pio_inq_varid(gw_file_desc,'UARR',uhid)
-
-  call handle_pio_error(stat, &
-       'Error finding UH in: '//trim(file_path))
-
-  stat = pio_get_var(gw_file_desc, uhid, start=[1], count=[desc%maxuh], &
-       ival=desc%uh)
-
-  call handle_pio_error(stat, &
-       'Error reading UH from: '//trim(file_path))
-
-  ! Allocate mfcc. "desc%maxh" and "desc%maxuh" are from the file, but the
-  ! model determines wavenumber dimension.
-
-  allocate(desc%mfcc(desc%maxh,-desc%maxuh:desc%maxuh,&
-       -band%ngwv:band%ngwv), stat=stat, errmsg=msg)
-
-  call shr_assert(stat == 0, &
-       "gw_drag_cam_movmtn_init: Allocation error (mfcc): "//msg// &
-       errMsg(__FILE__, __LINE__))
-
-  ! Get mfcc data.
-
-  stat = pio_inq_varid(gw_file_desc,'NEWMF',mfccid)
-
-  call handle_pio_error(stat, &
-       'Error finding mfcc in: '//trim(file_path))
-
-  stat = pio_get_var(gw_file_desc, mfccid, &
-       start=[1,1], count=shape(desc%mfcc), &
-       ival=desc%mfcc)
-
-  call handle_pio_error(stat, &
-       'Error reading mfcc from: '//trim(file_path))
-
-  call pio_closefile(gw_file_desc)
-
-  if (masterproc) then
-
-     write(iulog,*) "Read in Mov Mountain source file."
-
-  endif
 end subroutine gw_drag_cam_movmtn_init
 !==========================================================================
 
-! Utility to reduce the repetitiveness of reads during initialization.
-function get_pio_dimlen(file_desc, dim_name, file_path) result(dimlen)
-
-  use pio, only: file_desc_t, pio_inq_dimid, pio_inq_dimlen
-
-  type(file_desc_t), intent(in) :: file_desc
-  character(len=*), intent(in) :: dim_name
-
-  ! File path, for use in error messages only.
-  character(len=*), intent(in) :: file_path
-
-  integer :: dimlen
-
-  integer :: dimid, stat
-
-  stat = pio_inq_dimid(file_desc, dim_name, dimid)
-
-  call handle_pio_error(stat, &
-       "Error finding dimension "//dim_name//" in: "//file_path)
-
-  stat = pio_inq_dimlen(file_desc, dimid, dimlen)
-
-  call handle_pio_error(stat, &
-       "Error reading dimension "//dim_name//" from: "//file_path)
-
-end function get_pio_dimlen
 
 !==========================================================================
 
@@ -1694,46 +1230,50 @@ subroutine gw_drag_cam_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   ! Make local copy of input state.
   call physics_state_copy(state, state1)
 
-!!$  ! constituents are all treated as wet mmr
-!!$  call set_dry_to_wet(state1, convert_cnst_type='dry')
-
-  ncol = state1%ncol
   lchnk = state1%lchnk
+  ncol  = state1%ncol
+
+  p = Coords1D(state1%pint(:ncol,:))
+
   dse = state1%s(:ncol,:)
   t = state1%t(:ncol,:)
   u = state1%u(:ncol,:)
   v = state1%v(:ncol,:)
   q = state1%q(:ncol,:,:)
-  pint = state1%pint(:ncol,:)
   piln = state1%lnpint(:ncol,:)
   zm = state1%zm(:ncol,:)
   zi = state1%zi(:ncol,:)
-  pdel = state1%pdel(:ncol,:)
-  pdeldry = state1%pdeldry(:ncol,:)
-  lat = state1%lat(:ncol)
 
   lq = .true.
   call physics_ptend_init(ptend, state1%psetcols, "Gravity wave drag", &
        ls=.true., lu=.true., lv=.true., lq=lq)
 
+!jt  moved to gw_drag_run
+!!$  ! Profiles of background state variables
+!!$  call gw_prof(ncol, p, cpair, t, rhoi, nm, ni)
+
   if (do_molec_diff) then
-     call pbuf_get_field(pbuf, kvt_idx, kvt)
-     ! Set kvtt from pbuf field; kvtt still needs a factor of 1/cpairv.
-     kvtt = kvt(:ncol,:)
+     !--------------------------------------------------------
+     ! Initialize and calculate local molecular diffusivity
+     !--------------------------------------------------------
 
-     ! Use linear extrapolation of cpairv to top interface.
-     kvtt(:,1) = kvtt(:,1) / &
-          (1.5_r8*cpairv(:ncol,1,lchnk) - &
-          0.5_r8*cpairv(:ncol,2,lchnk))
+     call pbuf_get_field(pbuf, kvt_idx, kvt_in)  ! kvt_in(1:pcols,1:pver+1)
 
-     ! Interpolate cpairv to other interfaces.
-     do k = 2, nbot_molec
-        kvtt(:,k) = kvtt(:,k) / &
-             (cpairv(:ncol,k+1,lchnk)+cpairv(:ncol,k,lchnk)) * 2._r8
-     enddo
   else
-     kvtt = 0._r8
+
+     kvt_in = 0._r8
+
   end if
+
+!jt  moved to gw_run
+!!$  if (use_gw_front_igw) then
+!!$     u_coriolis = coriolis_speed(band_long, state1%lat(:ncol))
+!!$  end if
+
+  ! Totals that accumulate over different sources.
+  egwdffi_tot = 0._r8
+  flx_heat = 0._r8
+
 
   if (use_gw_front .or. use_gw_front_igw) then
      ! Get frontogenesis physics buffer fields set by dynamics.
@@ -1773,15 +1313,10 @@ subroutine gw_drag_cam_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
        degree2radian,al0,dlat0, &
        pint, piln, pdel, pdeldry, zm, zi, lat, cam_in%landfrac, &
        dse, t, u, v, q, vort4gw, &
-       sgharr, kvtt, ttend_dp, ttend_sh, ttend_clubb, &
+       sgharr, kvt_in, ttend_dp, ttend_sh, ttend_clubb, &
        thlp2_clubb_gw,wpthlp_clubb_gw,upwp_clubb_gw, vpwp_clubb_gw, &
-       movmtn_desc%hd, movmtn_desc%uh, movmtn_desc%mfcc, &
-       rdg_gbxar(:ncol,lchnk), rdg_hwdth(:ncol,:,lchnk), rdg_clngt(:ncol,:,lchnk), &
-       rdg_mxdis(:ncol,:,lchnk), rdg_anixy(:ncol,:,lchnk), rdg_angll(:ncol,:,lchnk), &
-       rdg_gbxarg(:ncol,lchnk), rdg_hwdthg(:ncol,:,lchnk), rdg_clngtg(:ncol,:,lchnk), &
-       rdg_mxdisg(:ncol,:,lchnk), rdg_anixyg(:ncol,:,lchnk), rdg_angllg(:ncol,:,lchnk), &
-       ptend%s, ptend%q, ptend%u, ptend%v, scheme_name, nbot_molec, flx_heat, &
-       errmsg, errflg)
+       ptend%s, ptend%q, ptend%u, ptend%v, scheme_name, nbot_molec, &
+       egwdffi_tot, flx_heat, errmsg, errflg)
 
   ! Convert the tendencies for the dry constituents to dry air basis.
   do m = 1, pcnst
@@ -1808,6 +1343,370 @@ subroutine gw_drag_cam_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
 end subroutine gw_drag_cam_tend
 
+
+!==========================================================================
+!==========================================================================
+
+! Add all history fields for a gravity wave spectrum source.
+subroutine gw_spec_addflds(prefix, scheme, ngwv, dc, history_defaults)
+  use cam_history, only: addfld, add_default, register_vector_field
+
+  !------------------------------Arguments--------------------------------
+
+  ! One character prefix prepended to output fields.
+  character(len=1), intent(in) :: prefix
+  ! Gravity wave scheme name prepended to output field descriptions.
+  character(len=*), intent(in) :: scheme
+  ! Wave speeds.
+  type(GWBand), intent(in) :: band
+  ! Whether or not to call add_default for fields output by WACCM.
+  logical, intent(in) :: history_defaults
+
+  !---------------------------Local storage-------------------------------
+
+  integer :: l
+  ! 7 chars is enough for "-100.00"
+  character(len=7)  :: fnum
+  ! 10 chars is enough for "BTAUXSn32"
+  character(len=10) :: dumc1x, dumc1y
+  ! Allow 80 chars for description
+  character(len=80) dumc2
+
+  !-----------------------------------------------------------------------
+
+  ! Uniform phase speed reference grid.
+  allocate(cref(-ngwv:ngwv))
+  cref = [( dc * l, l = -ngwv, ngwv )]
+
+  ! Overall wind tendencies.
+  call addfld (trim(prefix)//'UTGWSPEC',(/ 'lev' /), 'A','m s-2', &
+       trim(scheme)//' U tendency - gravity wave spectrum')
+  call addfld (trim(prefix)//'VTGWSPEC',(/ 'lev' /), 'A','m s-2', &
+       trim(scheme)//' V tendency - gravity wave spectrum')
+  call register_vector_field(trim(prefix)//'UTGWSPEC',trim(prefix)//'VTGWSPEC')
+
+  call addfld (trim(prefix)//'TTGWSPEC',(/ 'lev' /), 'A','K s-1', &
+       trim(scheme)//' T tendency - gravity wave spectrum')
+
+  ! Wind tendencies broken across five spectral bins.
+  call addfld (trim(prefix)//'UTEND1',  (/ 'lev' /), 'A','m s-2', &
+       trim(scheme)//' U tendency   c < -40')
+  call addfld (trim(prefix)//'UTEND2',  (/ 'lev' /), 'A','m s-2', &
+       trim(scheme)//' U tendency  -40 < c < -15')
+  call addfld (trim(prefix)//'UTEND3',  (/ 'lev' /), 'A','m s-2', &
+       trim(scheme)//' U tendency  -15 < c <  15')
+  call addfld (trim(prefix)//'UTEND4',  (/ 'lev' /), 'A','m s-2', &
+       trim(scheme)//' U tendency   15 < c <  40')
+  call addfld (trim(prefix)//'UTEND5',  (/ 'lev' /), 'A','m s-2', &
+       trim(scheme)//' U tendency   40 < c ')
+
+  ! Reynold's stress toward each cardinal direction, and net zonal stress.
+  call addfld (trim(prefix)//'TAUE' ,   (/ 'ilev' /), 'A','Pa', &
+       trim(scheme)//' Eastward Reynolds stress')
+  call addfld (trim(prefix)//'TAUW' ,   (/ 'ilev' /), 'A','Pa', &
+       trim(scheme)//' Westward Reynolds stress')
+  call addfld (trim(prefix)//'TAUNET' , (/ 'ilev' /), 'A','Pa', &
+       trim(scheme)//' E+W Reynolds stress')
+  call addfld (trim(prefix)//'TAUN' ,   (/ 'ilev' /), 'A','Pa', &
+       trim(scheme)//' Northward Reynolds stress')
+  call addfld (trim(prefix)//'TAUS' ,   (/ 'ilev' /), 'A','Pa', &
+       trim(scheme)//' Southward Reynolds stress')
+
+  ! Momentum flux in each direction.
+  call addfld (trim(prefix)//'EMF',       (/ 'lev' /), 'A','Pa', &
+       trim(scheme)//' Eastward MF')
+  call addfld (trim(prefix)//'WMF',       (/ 'lev' /), 'A','Pa', &
+       trim(scheme)//' Westward MF')
+  call addfld (trim(prefix)//'NMF',       (/ 'lev' /), 'A','Pa', &
+       trim(scheme)//' Northward MF')
+  call addfld (trim(prefix)//'SMF',       (/ 'lev' /), 'A','Pa', &
+       trim(scheme)//' Southward MF')
+
+  ! Temperature tendency terms.
+  call addfld (trim(prefix)//'TTGWSDF' , (/ 'lev' /), 'A','K s-1', &
+       trim(scheme)//' t tendency - diffusion term')
+  call addfld (trim(prefix)//'TTGWSKE' , (/ 'lev' /), 'A','K s-1', &
+       trim(scheme)//' t tendency - kinetic energy conversion term')
+
+  ! Gravity wave source spectra by wave number.
+  do l=-ngwv,ngwv
+     ! String containing reference speed.
+     write (fnum,fmt='(f7.2)') cref(l)
+
+     dumc1x = tau_fld_name(l, prefix, x_not_y=.true.)
+     dumc1y = tau_fld_name(l, prefix, x_not_y=.false.)
+     dumc2 = trim(scheme)//" tau at c= "//trim(fnum)//" m s-1"
+     call addfld (trim(dumc1x),(/ 'lev' /), 'A','Pa',dumc2)
+     call addfld (trim(dumc1y),(/ 'lev' /), 'A','Pa',dumc2)
+
+  end do
+
+  if (history_defaults) then
+     call add_default(trim(prefix)//'UTGWSPEC', 1, ' ')
+     call add_default(trim(prefix)//'VTGWSPEC', 1, ' ')
+     call add_default(trim(prefix)//'TTGWSPEC', 1, ' ')
+     call add_default(trim(prefix)//'TAUE', 1, ' ')
+     call add_default(trim(prefix)//'TAUW', 1, ' ')
+     call add_default(trim(prefix)//'TAUNET', 1, ' ')
+     call add_default(trim(prefix)//'TAUN', 1, ' ')
+     call add_default(trim(prefix)//'TAUS', 1, ' ')
+  end if
+
+end subroutine gw_spec_addflds
+
+!==========================================================================
+
+! Outputs for spectral waves.
+subroutine gw_spec_outflds(prefix, lchnk, ncol, band, phase_speeds, u, v, xv, yv, &
+     gwut, dttdf, dttke, tau, utgw, vtgw, ttgw, taucd)
+
+  use gw_common, only: west, east, south, north
+
+  ! One-character prefix prepended to output fields.
+  character(len=1), intent(in) :: prefix
+  ! Chunk and number of columns in the chunk.
+  integer, intent(in) :: lchnk
+  integer, intent(in) :: ncol
+  ! Wave speeds.
+  type(GWBand), intent(in) :: band
+  ! Wave phase speeds for each column.
+  real(r8), intent(in) :: phase_speeds(ncol,-band%ngwv:band%ngwv)
+  ! Winds at cell midpoints.
+  real(r8), intent(in) :: u(ncol,pver)
+  real(r8), intent(in) :: v(ncol,pver)
+  ! Unit vector in the direction of wind at source level.
+  real(r8), intent(in) :: xv(ncol)
+  real(r8), intent(in) :: yv(ncol)
+  ! Wind tendency for each wave.
+  real(r8), intent(in) :: gwut(ncol,pver,-band%ngwv:band%ngwv)
+  ! Temperature tendencies from diffusion and kinetic energy.
+  real(r8) :: dttdf(ncol,pver)
+  real(r8) :: dttke(ncol,pver)
+  ! Wave Reynolds stress.
+  real(r8), intent(in) :: tau(ncol,-band%ngwv:band%ngwv,pver)
+  ! Zonal and meridional total wind tendencies.
+  real(r8), intent(in) :: utgw(ncol,pver)
+  real(r8), intent(in) :: vtgw(ncol,pver)
+  ! Temperature tendencies.
+  real(r8), intent(in) :: ttgw(ncol,pver)
+  ! Reynolds stress for waves propagating in each cardinal direction.
+  real(r8), intent(in) :: taucd(ncol,pver+1,4)
+
+  ! Indices
+  integer :: i, k, l
+  integer :: ix(ncol, -band%ngwv:band%ngwv), iy(ncol, -band%ngwv:band%ngwv)
+  integer :: iu(ncol), iv(ncol)
+
+  ! Zonal wind tendency, broken up into five bins.
+  real(r8) :: utb(ncol, pver, 5)
+  ! Definition of the bin boundaries.
+  real(r8), parameter :: bounds(4) = (/ -40._r8, -15._r8, &
+       15._r8, 40._r8 /)
+
+  ! Momentum flux in the four cardinal directions.
+  real(r8) :: mf(ncol, pver, 4)
+
+  ! Wave stress in zonal/meridional direction
+  real(r8) :: taux(ncol,-band%ngwv:band%ngwv,pver)
+  real(r8) :: tauy(ncol,-band%ngwv:band%ngwv,pver)
+
+  ! Temporaries for output
+  real(r8) :: dummyx(ncol,pver)
+  real(r8) :: dummyy(ncol,pver)
+  ! Variable names
+  character(len=10) :: dumc1x, dumc1y
+
+
+  ! Accumulate wind tendencies binned according to phase speed.
+
+  utb = 0._r8
+
+  ! Find which output bin the phase speed corresponds to.
+  ix = find_bin(phase_speeds)
+
+  ! Put the wind tendency in that bin.
+  do l = -band%ngwv, band%ngwv
+     do k = 1, pver
+        do i = 1, ncol
+           utb(i,k,ix(i,l)) = utb(i,k,ix(i,l)) + gwut(i,k,l)
+        end do
+     end do
+  end do
+
+  ! Find just the zonal part.
+  do l = 1, 5
+     do k = 1, pver
+        utb(:, k, l) = utb(:, k, l) * xv
+     end do
+  end do
+
+  call outfld(trim(prefix)//'UTEND1', utb(:,:,1), ncol, lchnk)
+  call outfld(trim(prefix)//'UTEND2', utb(:,:,2), ncol, lchnk)
+  call outfld(trim(prefix)//'UTEND3', utb(:,:,3), ncol, lchnk)
+  call outfld(trim(prefix)//'UTEND4', utb(:,:,4), ncol, lchnk)
+  call outfld(trim(prefix)//'UTEND5', utb(:,:,5), ncol, lchnk)
+
+  ! Output temperature tendencies due to diffusion and from kinetic energy.
+  call outfld(trim(prefix)//'TTGWSDF', dttdf / cpair, ncol, lchnk)
+  call outfld(trim(prefix)//'TTGWSKE', dttke / cpair, ncol, lchnk)
+
+
+  ! Output tau broken down into zonal and meridional components.
+
+  taux = 0._r8
+  tauy = 0._r8
+
+  ! Project phase_speeds, and convert each component to a wavenumber index.
+  ! These are mappings from the wavenumber index of tau to those of taux
+  ! and tauy, respectively.
+  do l=-band%ngwv,band%ngwv
+     ix(:,l) = c_to_l(phase_speeds(:,l)*xv)
+     iy(:,l) = c_to_l(phase_speeds(:,l)*yv)
+  end do
+
+  ! Find projection of tau.
+  do k = 1, pver
+     do l = -band%ngwv,band%ngwv
+        do i = 1, ncol
+           taux(i,ix(i,l),k) = taux(i,ix(i,l),k) &
+                + abs(tau(i,l,k)*xv(i))
+           tauy(i,iy(i,l),k) = tauy(i,iy(i,l),k) &
+                + abs(tau(i,l,k)*yv(i))
+        end do
+     end do
+  end do
+
+  do l=-band%ngwv,band%ngwv
+
+     dummyx = taux(:,l,:)
+     dummyy = tauy(:,l,:)
+
+     dumc1x = tau_fld_name(l, prefix, x_not_y=.true.)
+     dumc1y = tau_fld_name(l, prefix, x_not_y=.false.)
+
+     call outfld(dumc1x,dummyx,ncol,lchnk)
+     call outfld(dumc1y,dummyy,ncol,lchnk)
+
+  enddo
+
+
+  ! Output momentum flux in each cardinal direction.
+  mf = 0._r8
+
+  do k = 1, pver
+
+     ! Convert wind speed components to wavenumber indices.
+     iu = c_to_l(u(:,k))
+     iv = c_to_l(v(:,k))
+
+     ! Sum tau components in each cardinal direction.
+     ! Split west/east and north/south based on whether wave speed exceeds
+     ! wind speed.
+     do l = -band%ngwv, band%ngwv
+
+        where (iu > l)
+           mf(:,k,west) = mf(:,k,west) + taux(:,l,k)
+        elsewhere
+           mf(:,k,east) = mf(:,k,east) + taux(:,l,k)
+        end where
+
+        where (iv > l)
+           mf(:,k,south) = mf(:,k,south) + tauy(:,l,k)
+        elsewhere
+           mf(:,k,north) = mf(:,k,north) + tauy(:,l,k)
+        end where
+
+     end do
+
+  end do
+
+  call outfld(trim(prefix)//'WMF',mf(:,:,west),ncol,lchnk)
+  call outfld(trim(prefix)//'EMF',mf(:,:,east),ncol,lchnk)
+  call outfld(trim(prefix)//'SMF',mf(:,:,south),ncol,lchnk)
+  call outfld(trim(prefix)//'NMF',mf(:,:,north),ncol,lchnk)
+
+  ! Simple output fields written to history file.
+  ! Total wind tendencies.
+  call outfld (trim(prefix)//'UTGWSPEC', utgw , ncol, lchnk)
+  call outfld (trim(prefix)//'VTGWSPEC', vtgw , ncol, lchnk)
+  call outfld (trim(prefix)//'TTGWSPEC', ttgw , ncol, lchnk)
+
+  ! Tau in each direction.
+  call outfld (trim(prefix)//'TAUE', taucd(:,:,east), ncol, lchnk)
+  call outfld (trim(prefix)//'TAUW', taucd(:,:,west), ncol, lchnk)
+  call outfld (trim(prefix)//'TAUN', taucd(:,:,north), ncol, lchnk)
+  call outfld (trim(prefix)//'TAUS', taucd(:,:,south), ncol, lchnk)
+
+  call outfld (trim(prefix)//'TAUNET', taucd(:,:,east)+taucd(:,:,west), &
+       ncol, lchnk)
+
+contains
+
+  ! Given a value, finds which bin marked by "bounds" the value falls
+  ! into.
+  elemental function find_bin(val) result(idx)
+    real(r8), intent(in) :: val
+
+    integer :: idx
+
+    ! We just have to count how many bounds are exceeded.
+    if (val >= 0._r8) then
+       idx = count(val > bounds) + 1
+    else
+       idx = count(val >= bounds) + 1
+    end if
+
+  end function find_bin
+
+  ! Convert a speed to a wavenumber between -ngwv and ngwv.
+  elemental function c_to_l(c) result(l)
+    real(r8), intent(in) :: c
+
+    integer :: l
+
+    l = min( max(int(c/band%dc),-band%ngwv), band%ngwv )
+
+  end function c_to_l
+
+end subroutine gw_spec_outflds
+
+!==========================================================================
+
+! Generates names for tau output across the wave spectrum (e.g.
+! BTAUXSn01 or TAUYSp05).
+! Probably this should use a wavenumber dimension on one field rather
+! than creating a ton of numbered fields.
+character(len=9) pure function tau_fld_name(l, prefix, x_not_y)
+  ! Wavenumber
+  integer, intent(in) :: l
+  ! Single-character prefix for output
+  character(len=1), intent(in) :: prefix
+  ! X or Y?
+  logical, intent(in) :: x_not_y
+
+  character(len=2) :: num_str
+
+  tau_fld_name = trim(prefix)
+
+  tau_fld_name = trim(tau_fld_name)//"TAU"
+
+  if (x_not_y) then
+     tau_fld_name = trim(tau_fld_name)//"XS"
+  else
+     tau_fld_name = trim(tau_fld_name)//"YS"
+  end if
+
+  if (l < 0) then
+     tau_fld_name = trim(tau_fld_name)//"n"
+  else
+     tau_fld_name = trim(tau_fld_name)//"p"
+  end if
+
+  write(num_str,'(I2.2)') abs(l)
+
+  tau_fld_name = trim(tau_fld_name)//num_str
+
+end function tau_fld_name
 
 !==========================================================================
 
