@@ -18,7 +18,7 @@ module gw_drag_cam
 !
 !--------------------------------------------------------------------------
   use shr_kind_mod,   only: r8=>shr_kind_r8, cl=>shr_kind_cl
-  use shr_log_mod,    only: errMsg => shr_log_errMsg
+  use shr_log_mod,    only: shr_errMsg => shr_log_errMsg
   use shr_assert_mod, only: shr_assert
 
   use ppgrid,         only: pcols, pver, begchunk, endchunk
@@ -37,13 +37,13 @@ module gw_drag_cam
   ! These are the actual switches for different gravity wave sources.
   use phys_control,   only: use_gw_oro, use_gw_front, use_gw_front_igw, &
                             use_gw_convect_dp, use_gw_convect_sh,       &
-                            use_simple_phys, use_gw_movmtn_pbl
+                            use_simple_phys, use_gw_movmtn_pbl, phys_getopts
+
 
   use gw_drag,        only: gw_drag_init
-  use gw_common,      only: GWBand
-  use gw_convect,     only: BeresSourceDesc
-  use gw_movmtn,      only: MovMtnSourceDesc, gw_movmtn_init
-  use gw_front,       only: CMSourceDesc
+!jt  use gw_common,      only: GWBand
+  use gw_movmtn,      only: gw_movmtn_init
+  use physics_buffer, only: pbuf_get_field
 
 ! Typical module header
   implicit none
@@ -61,23 +61,6 @@ module gw_drag_cam
 ! PRIVATE: Rest of the data and interfaces are private to this module
 !
   real(r8), parameter :: unset_r8 = huge(1._r8)
-
-  ! A mid-scale "band" with only stationary waves (l = 0).
-  type(GWBand) :: band_oro
-  ! Medium scale waves.
-  type(GWBand) :: band_mid
-  ! Long scale waves for IGWs.
-  type(GWBand) :: band_long
-  ! Medium scale waves for moving mountain
-  type(GWBand) :: band_movmtn
-
-  ! Beres settings and table.
-  type(BeresSourceDesc) :: beres_dp_desc
-  type(BeresSourceDesc) :: beres_sh_desc
-
-  ! Frontogenesis wave settings.
-  type(CMSourceDesc) :: cm_desc
-  type(CMSourceDesc) :: cm_igw_desc
 
   ! Top level for gravity waves.
   integer, parameter :: ktop = 1
@@ -239,6 +222,7 @@ module gw_drag_cam
   real(r8), pointer :: ttend_dp(:,:)
   ! Temperature change due to shallow convection.
   real(r8), pointer :: ttend_sh(:,:)
+  real(r8)          :: ttend_sh_arr(ncol,pver)
 
   !  New couplings from CLUBB
   real(r8), pointer :: ttend_clubb(:,:)
@@ -247,6 +231,7 @@ module gw_drag_cam
   real(r8), pointer :: upwp_clubb_gw(:,:)
   real(r8), pointer :: vpwp_clubb_gw(:,:)
   real(r8), pointer :: vort4gw(:,:)
+
 
 !==========================================================================
 contains
@@ -405,12 +390,12 @@ subroutine gw_drag_cam_readnl(nlfile)
   call shr_assert(pgwv >= 0, &
        "gw_drag_cam_readnl: pgwv must be set via the namelist and &
        &non-negative."// &
-       errMsg(__FILE__, __LINE__))
+       shr_errMsg(__FILE__, __LINE__))
 
   ! Check if gw_dc was set.
   call shr_assert(gw_dc /= unset_r8, &
        "gw_drag_cam_readnl: gw_dc must be set via the namelist."// &
-       errMsg(__FILE__, __LINE__))
+       shr_errMsg(__FILE__, __LINE__))
 
   if (use_gw_rdg_gamma .or. use_gw_rdg_beta) then
      call gw_rdg_cam_readnl(nlfile)
@@ -440,16 +425,14 @@ subroutine gw_drag_cam_init()
   ! temporary for restart with ridge scheme
   use cam_initfiles,    only: bnd_topo
 
-  use cam_pio_utils,    only: cam_pio_openfile
   use cam_grid_support, only: cam_grid_check, cam_grid_id
   use cam_grid_support, only: cam_grid_get_dim_names
-  use pio,              only: file_desc_t, pio_nowrite, pio_closefile
+  use pio,              only: file_desc_t
   use ncdio_atm,        only: infld
   use ioFileMod,        only: getfil
 
   use ref_pres,   only: pref_edge, pref_mid
   use physconst,  only: gravit, rair, rearth, pi
-  use gw_front,   only: gaussian_cm_desc
 
   !---------------------------Local storage-------------------------------
 
@@ -482,65 +465,88 @@ subroutine gw_drag_cam_init()
   ! temporary workaround for restart w/ ridge scheme
   character(len=cl) :: bnd_topo_loc   ! filepath of topo file on local disk
 
-  character(len=512)              :: errormsg
-  integer                         :: errorflg
+  character(len=512)              :: errmsg
+  integer                         :: errflg
+  character(len=cl)              :: gw_drag_file_loc
+  character(len=cl)              :: gw_drag_file_mm_loc
+  character(len=cl)              :: gw_drag_file_sh_loc
 
   !-----------------------------------------------------------------------
 
-
-  if (do_molec_diff) then
-     kvt_idx     = pbuf_get_index('kvt')
+  if (use_gw_convect_dp) then
+     if (trim(gw_drag_file) /= "") then
+        call getfil(gw_drag_file, gw_drag_file_loc)
+     else
+        errmsg='ERROR gw_drag_cam_init: use_gw_convect_dp is true but gw_drag_file is not specified in namelist'
+        errflg=-1
+        return
+     end if
   end if
-
-  if (do_molec_diff) then
-     !--------------------------------------------------------
-     ! Initialize and calculate local molecular diffusivity
-     !--------------------------------------------------------
-
-     call pbuf_get_field(pbuf, kvt_idx, kvt_in)  ! kvt_in(1:pcols,1:pver+1)
-
-     ! Set kvtt from pbuf field; kvtt still needs a factor of 1/cpairv.
-     kvtt = kvt_in(:ncol,:)
-
-     ! Use linear extrapolation of cpairv to top interface.
-     kvtt(:,1) = kvtt(:,1) / &
-          (1.5_r8*cpairv(:ncol,1,lchnk) - &
-          0.5_r8*cpairv(:ncol,2,lchnk))
-
-     ! Interpolate cpairv to other interfaces.
-     do k = 2, nbot_molec
-        kvtt(:,k) = kvtt(:,k) / &
-             (cpairv(:ncol,k+1,lchnk)+cpairv(:ncol,k,lchnk)) * 2._r8
-     enddo
-
-  else
-
-     kvtt = 0._r8
-
+  if (use_gw_convect_sh) then
+     if (trim(gw_drag_file_sh) /= "") then
+        call getfil(gw_drag_file_sh, gw_drag_file_sh_loc)
+     else
+        errmsg='ERROR gw_drag_cam_init: use_gw_convect_sh is true but gw_drag_file_sh is not specified in namelist'
+        errflg=-1
+        return
+     end if
+  end if
+  !movmtn files
+  if (use_gw_movmtn_pbl) then
+     if( trim(gw_drag_file_mm) /= "") then
+        call getfil(gw_drag_file_mm, gw_drag_file_mm_loc)
+     else
+        errmsg='ERROR gw_drag_cam_init: use_gw_movmtn_pbl is true but gw_drag_file_mm is not specified in namelist'
+        errflg=-1
+        return
+     end if
+  end if
+     !rdg files
+  if (use_gw_rdg_beta) then
+     if (trim(bnd_topo) /= "") then
+        call getfil(bnd_topo, bnd_topo_loc)
+     else
+        errmsg='ERROR gw_drag_cam_init: use_gw_rdg_beta is true but bnd_topo file is not specified in namelist'
+        errflg=-1
+        return
+     end if
+  end if
+  if (use_gw_rdg_gamma) then
+     if ( trim(bnd_rdggm) /= "") then
+        call getfil(bnd_rdggm, bnd_rdggm_loc)
+     else
+        errmsg='ERROR gw_drag_cam_init: use_gw_rdg_gamma is true but bnd_rdggm file is not specified in namelist'
+        errflg=-1
+        return
+     end if
   end if
 
   call gw_drag_init( &
+       iulog,  &
+       ktop,  &
+       masterproc, &
        pver,  &
        gravit,  &
        rair,  &
        pi,  &
+       fcrit2,  &
+       rearth,  &
+       pref_edge,  &
+       pref_mid,  &
        pgwv,  &
        gw_dc,  &
        pgwv_long,  &
        gw_dc_long,  &
        tau_0_ubc,  &
-       pref_edge,  &
-       pref_mid,  &
        effgw_beres_dp,  &
        effgw_beres_sh,  &
        effgw_cm,  &
        effgw_cm_igw,  &
        effgw_oro,  &
-       fcrit2,  &
        frontgfc,  &
-       gw_drag_file,  &
-       gw_drag_file_sh,  &
-       gw_drag_file_mm,  &
+       gw_drag_file_loc,  &
+       gw_drag_file_sh_loc,  &
+       gw_drag_file_mm_loc,  &
        taubgnd,  &
        taubgnd_igw,  &
        gw_polar_taper,  &
@@ -556,7 +562,8 @@ subroutine gw_drag_cam_init()
        effgw_rdg_gamma_max,  &
        rdg_gamma_cd_llb,  &
        trpd_leewv_rdg_gamma,  &
-       bnd_rdggm,  &
+       bnd_topo_loc,  &
+       bnd_rdggm_loc,  &
        gw_oro_south_fac,  &
        gw_limit_tau_without_eff,  &
        gw_lndscl_sgh,  &
@@ -566,38 +573,31 @@ subroutine gw_drag_cam_init()
        gw_top_taper,  &
        front_gaussian_width,  &
        alpha_gw_movmtn,  &
+       use_gw_rdg_resid, &
        effgw_rdg_resid, &
        effgw_movmtn_pbl, &
        movmtn_source, &
        movmtn_psteer, &
        movmtn_plaunch, &
-       use_gw_front,  &
-       use_gw_rdg_resid, &
        use_gw_oro,  &
+       use_gw_front,  &
        use_gw_front_igw,  &
        use_gw_convect_dp,  &
        use_gw_convect_sh,  &
        use_simple_phys,  &
-       use_gw_movmtn_pbl, &
-       iulog,  &
-       ktop,  &
-       masterproc, &
+       use_gw_movmtn_pbl,  &
        do_molec_diff,  &
+       nbot_molec, &
        wavelength_mid,  &
        wavelength_long,  &
-       errormsg,  &
-       errorflg )
-
+       errmsg,  &
+       errflg )
 
   ! Used to decide whether temperature tendencies should be output.
   call phys_getopts( history_budget_out = history_budget, &
        history_budget_histfile_num_out = history_budget_histfile_num, &
        history_waccm_out = history_waccm, &
        history_amwg_out   = history_amwg  )
-
-  ! Totals that accumulate over different sources.
-  egwdffi_tot = 0._r8
-  flx_heat = 0._r8
 
   if ( use_gw_oro ) then
 
@@ -645,13 +645,8 @@ subroutine gw_drag_cam_init()
 
   end if
 
-  ! ========= GW Ridge Beta initialization! ==========================
-  call getfil(bnd_topo, bnd_topo_loc)
-  call gw_drag_cam_rdg_beta_init(use_gw_rdg_beta, bnd_topo_loc)
+!jt  call gw_rdg_cam_init(band_oro,use_gw_rdg_beta,use_gw_rdg_gamma)
 
-  ! ========= GW Ridge Gamma initialization! ==========================
-  call getfil(bnd_rdggm, bnd_rdggm_loc, iflag=1, lexist=found)
-  call gw_drag_cam_rdg_gamma_init(use_gw_rdg_gamma, bnd_rdggm_loc)
 
   ! ========= gw front initialization! ==========================
   if (use_gw_front .or. use_gw_front_igw) then
@@ -662,7 +657,7 @@ subroutine gw_drag_cam_init()
      call shr_assert(unset_r8 /= frontgfc, &
           "gw_init: Frontogenesis enabled, but frontgfc was &
           & not set!"// &
-          errMsg(__FILE__, __LINE__))
+          shr_errMsg(__FILE__, __LINE__))
 
      call addfld ('FRONTGF', (/ 'lev' /), 'A', 'K^2/M^2/S', &
           'Frontogenesis function at gws src level')
@@ -674,17 +669,49 @@ subroutine gw_drag_cam_init()
         call add_default('FRONTGFA', 1, ' ')
      end if
 
+     if (use_gw_front) then
+        if (masterproc) then
+           write(iulog,*) 'gw_init: gw spectrum taubgnd, ', &
+                'effgw_cm = ',taubgnd, effgw_cm
+           write(iulog,*) ' '
+        end if
+!jt ******** Add this to a gw_drag_cam_front_diag_init subroutine
+        ! Output for gravity waves from frontogenesis.
+!jt ******** create bands on CAM side to pass to spec addflds
+        !jt call gw_spec_addflds(prefix=cm_pf, scheme="C&M", band=band_mid, &
+        !jt     history_defaults=history_waccm)
+     end if
   end if
-
   ! ========= Moving Mountain initialization! ==========================
-  call gw_drag_cam_movmtn_init(use_gw_movmtn_pbl, gw_drag_file_mm,movmtn_psteer, movmtn_plaunch, movmtn_source)
+  if (use_gw_movmtn_pbl) then
+     ! get pbuf indices for CLUBB couplings
+     ttend_clubb_idx     = pbuf_get_index('TTEND_CLUBB')
+     thlp2_clubb_gw_idx  = pbuf_get_index('THLP2_CLUBB_GW')
+     upwp_clubb_gw_idx   = pbuf_get_index('UPWP_CLUBB_GW')
+     vpwp_clubb_gw_idx   = pbuf_get_index('VPWP_CLUBB_GW')
+     wpthlp_clubb_gw_idx = pbuf_get_index('WPTHLP_CLUBB_GW')
+     vort4gw_idx         = pbuf_get_index('VORT4GW')
 
-  ! ========= Convect Deep/Shallow initialization! ==========================
-  call gw_drag_cam_beres_init(use_gw_convect_dp,use_gw_convect_sh, gw_drag_file, gw_drag_file_sh, pref_edge)
+     if (masterproc) then
+        write (iulog,*) 'Moving Mountain development code call init_movmtn'
+     end if
 
+     call gw_drag_cam_movmtn_diag_init(use_gw_movmtn_pbl, gw_drag_file_mm,movmtn_psteer, movmtn_plaunch, movmtn_source)
+  end if
+  ! ========= Convect diagnostics init! ==========================
+
+  if (use_gw_convect_dp .or. use_gw_convect_sh) then
+
+     if (use_gw_convect_dp) ttend_dp_idx    = pbuf_get_index('TTEND_DP')
+
+     if (use_gw_convect_sh) ttend_sh_idx    = pbuf_get_index('TTEND_SH')
+
+     call gw_drag_cam_beres_diag_init(use_gw_convect_dp,use_gw_convect_sh, gw_drag_file, gw_drag_file_sh, pgwv,gw_dc)
+  end if
   ! ========= Convect Beta/Gamma initialization! ==========================
-  call gw_drag_cam_rdg_init(use_gw_convect_dp,use_gw_convect_sh, use_gw_rdg_gamma, bnd_rdggm_loc)gw_drag_file, gw_drag_file_sh, pref_edge)
-
+  if (use_gw_rdg_beta .or. use_gw_rdg_gamma) then
+     call gw_drag_cam_rdg_diag_init(use_gw_rdg_beta,use_gw_rdg_gamma)
+  end if
   call addfld ('EKGW' ,(/ 'ilev' /), 'A','M2/S', &
        'Effective Kzz due to diffusion by gravity waves')
 
@@ -726,34 +753,21 @@ end subroutine gw_drag_cam_init
 
 !==========================================================================
 
-subroutine gw_drag_cam_rdg_init(use_gw_rdg_beta ,use_gw_rdg_gamma, bnd_topo_loc, bnd_rdggm_loc)
-  use pio, only: file_desc_t, pio_nowrite, pio_inq_varid, pio_get_var, &
-       pio_closefile
-  use cam_pio_utils, only: cam_pio_openfile
+subroutine gw_drag_cam_rdg_diag_init(use_gw_rdg_beta,use_gw_rdg_gamma)
+  use cam_history, only: addfld, add_default, register_vector_field
 
-  character(len=*), intent(in) :: file_name
-  type(GWBand), intent(in) :: band
+  logical, intent(in) ::  use_gw_rdg_beta
+  logical, intent(in) ::  use_gw_rdg_gamma
 
-  type(BeresSourceDesc), intent(inout) :: desc
-
-  type(file_desc_t) :: gw_file_desc
-
-  ! PIO variable ids and error code.
-  integer :: mfccid, hdid, stat
-
-  ! Number of wavenumbers in the input file.
-  integer :: ngwv_file
-
-  ! Full path to gw_drag_file.
-  character(len=cl) :: file_path
-
-  character(len=cl) :: msg
-
+  character(len=1) :: cn
+  integer          :: i
+  logical :: history_waccm
   !----------------------------------------------------------------------
   ! read in look-up table for source spectra
   !-----------------------------------------------------------------------
 
-  call gw_rdg_init(use_gw_rdg_beta ,use_gw_rdg_gamma, bnd_topo_loc, bnd_rdggm_loc)
+  ! Used to decide whether temperature tendencies should be output.
+  call phys_getopts( history_waccm_out = history_waccm)
 
   if (use_gw_rdg_beta) then
 
@@ -841,37 +855,8 @@ subroutine gw_drag_cam_rdg_init(use_gw_rdg_beta ,use_gw_rdg_gamma, bnd_topo_loc,
         call add_default('TAUARDGBETAY  ', 1, ' ')
      end if
   end if
-end subroutine gw_drag_cam_rdg_beta_init
-
-!==========================================================================
-
-subroutine gw_drag_cam_rdg_gamma_init(use_gw_rdg_gamma, bnd_topo_loc)
-
-  character(len=*), intent(in) :: file_name
-  type(GWBand), intent(in) :: band
-
-  type(BeresSourceDesc), intent(inout) :: desc
-
-  type(file_desc_t) :: gw_file_desc
-
-  ! PIO variable ids and error code.
-  integer :: mfccid, hdid, stat
-
-  ! Number of wavenumbers in the input file.
-  integer :: ngwv_file
-
-  ! Full path to gw_drag_file.
-  character(len=cl) :: file_path
-
-  character(len=cl) :: msg
 
   if (use_gw_rdg_gamma) then
-
-     !----------------------------------------------------------------------
-     ! read in look-up table for source spectra
-     !-----------------------------------------------------------------------
-
-     call gw_drag_rdg_gamma_init(use_gw_rdg_beta, bnd_topo_loc)
 
      call addfld ('TAU1RDGGAMMAM' , (/ 'ilev' /) , 'I'  ,'N m-2' , &
           'Ridge based momentum flux profile')
@@ -909,79 +894,86 @@ subroutine gw_drag_cam_rdg_gamma_init(use_gw_rdg_gamma, bnd_topo_loc)
           'V wind tendency from ridge 6     ')
      call register_vector_field('UTRDGGM','VTRDGGM')
   end if
-end subroutine gw_drag_cam_rdg_gamma_init
+end subroutine gw_drag_cam_rdg_diag_init
 !==========================================================================
 
-subroutine gw_drag_cam_beres_init(use_gw_convect_dp,use_gw_convect_sh, gw_drag_file_dp, gw_drag_file_sh, pref_edge)
+subroutine gw_drag_cam_beres_diag_init(use_gw_convect_dp,use_gw_convect_sh, gw_drag_file, gw_drag_file_sh, ngwv, dc)
 
-     call getfil(gw_drag_file_sh, gw_drag_file_sh_path)
-     call getfil(gw_drag_file_dp, gw_drag_file_dp_path)
-     call gw_beres_init(gw_drag_file_sh_path, gw_drag_file_dp_path, pref_edge, wavelength_mid, use_gw_convect_dp,use_gw_convect_sh, masterproc, iulog, errmsg, errflg )
+  use physconst,       only: pi
+  use ref_pres,        only: pref_edge
+  use cam_history, only: addfld, add_default, register_vector_field
 
-     if (use_gw_convect_dp) then
-        ! Output for gravity waves from the Beres scheme (deep).
-        call gw_spec_addflds(prefix=beres_dp_pf, scheme="Beres (deep)", &
-             pgwv, gw_dc, history_defaults=history_waccm)
+  logical, intent(in)            :: use_gw_convect_dp,use_gw_convect_sh
+  integer, intent(in)            :: ngwv
+  real(r8), intent(in)           :: dc
+  character(len=cl), intent(in)  :: gw_drag_file
+  character(len=cl), intent(in)  :: gw_drag_file_sh
+  ! output variables of interest in WACCM runs
+  logical :: history_waccm
+  character(len=512)              :: errmsg
+  integer                         :: errflg
 
-        call addfld ('NETDT',(/ 'lev' /), 'A','K s-1', &
-             'Net heating rate')
-        call addfld ('MAXQ0',horiz_only  ,  'A','K day-1', &
-             'Max column heating rate')
-        call addfld ('HDEPTH',horiz_only,    'A','km', &
-             'Heating Depth')
+  ! Used to decide whether temperature tendencies should be output.
+  call phys_getopts( history_waccm_out = history_waccm)
 
-        if (history_waccm) then
-           call add_default('NETDT    ', 1, ' ')
-           call add_default('HDEPTH   ', 1, ' ')
-           call add_default('MAXQ0    ', 1, ' ')
-        end if
+!!$  call gw_beres_init(pver, pi, gw_drag_file_sh_path, gw_drag_file_dp_path, pref_edge, wavelength_mid, use_gw_convect_dp,use_gw_convect_sh, masterproc, iulog, errmsg, errflg )
+
+  if (use_gw_convect_dp) then
+     ! Output for gravity waves from the Beres scheme (deep).
+     call gw_spec_addflds(ngwv, dc, prefix=beres_dp_pf, scheme="Beres (deep)", &
+          history_defaults=history_waccm)
+
+     call addfld ('NETDT',(/ 'lev' /), 'A','K s-1', &
+          'Net heating rate')
+     call addfld ('MAXQ0',horiz_only  ,  'A','K day-1', &
+          'Max column heating rate')
+     call addfld ('HDEPTH',horiz_only,    'A','km', &
+          'Heating Depth')
+
+     if (history_waccm) then
+        call add_default('NETDT    ', 1, ' ')
+        call add_default('HDEPTH   ', 1, ' ')
+        call add_default('MAXQ0    ', 1, ' ')
      end if
+  end if
 
-     if (use_gw_convect_sh) then
-        ! Output for gravity waves from the Beres scheme (shallow).
-        call gw_spec_addflds(prefix=beres_sh_pf, scheme="Beres (shallow)", &
-             pgwv, gw_dc, history_defaults=history_waccm)
+  if (use_gw_convect_sh) then
+     ! Output for gravity waves from the Beres scheme (shallow).
+     call gw_spec_addflds(ngwv, dc, prefix=beres_sh_pf, scheme="Beres (shallow)", &
+          history_defaults=history_waccm)
 
-        call addfld ('SNETDT',(/ 'lev' /), 'A','K s-1', &
-             'Net heating rate')
-        call addfld ('SMAXQ0',horiz_only  ,  'A','K day-1', &
-             'Max column heating rate')
-        call addfld ('SHDEPTH',horiz_only,    'A','km', &
-             'Heating Depth')
+     call addfld ('SNETDT',(/ 'lev' /), 'A','K s-1', &
+          'Net heating rate')
+     call addfld ('SMAXQ0',horiz_only  ,  'A','K day-1', &
+          'Max column heating rate')
+     call addfld ('SHDEPTH',horiz_only,    'A','km', &
+          'Heating Depth')
 
-        if (history_waccm) then
-           call add_default('SNETDT   ', 1, ' ')
-           call add_default('SHDEPTH  ', 1, ' ')
-           call add_default('SMAXQ0   ', 1, ' ')
-        end if
+     if (history_waccm) then
+        call add_default('SNETDT   ', 1, ' ')
+        call add_default('SHDEPTH  ', 1, ' ')
+        call add_default('SMAXQ0   ', 1, ' ')
      end if
+  end if
 
-end subroutine gw_drag_cam_beres_init
+end subroutine gw_drag_cam_beres_diag_init
 
 !==============================================================
-subroutine gw_drag_cam_movmtn_init(file_name, band, desc, psteer, plaunch, source)
+subroutine gw_drag_cam_movmtn_diag_init(use_gw_movmtn_pbl, file_name, psteer, plaunch, source)
 
   use ioFileMod, only: getfil
-  use pio, only: file_desc_t, pio_nowrite, pio_inq_varid, pio_get_var, &
-       pio_closefile
-  use cam_pio_utils, only: cam_pio_openfile
   use ref_pres,   only: pref_edge
+  use physics_buffer,   only: pbuf_get_index
+  use cam_history, only: addfld, add_default, register_vector_field
 
   character(len=*), intent(in) :: file_name
-  type(GWBand), intent(in) :: band
-
-  type(MovMtnSourceDesc), intent(inout) :: desc
+  logical, intent(in) :: use_gw_movmtn_pbl
   real(r8), intent(in) :: psteer
   real(r8), intent(in) :: plaunch
   integer, intent(in)  :: source
 
-  type(file_desc_t) :: gw_file_desc
-
   ! PIO variable ids and error code.
   integer :: mfccid, uhid, hdid, stat
-
-  ! Number of wavenumbers in the input file.
-  integer :: ngwv_file
 
   ! Full path to gw_drag_file.
   character(len=cl) :: file_path
@@ -992,12 +984,11 @@ subroutine gw_drag_cam_movmtn_init(file_name, band, desc, psteer, plaunch, sourc
 
   if (use_gw_movmtn_pbl) then
 
-     call getfil(file_name, file_path)
-     call gw_movmtn_init( pver, file_path, &
-          gw_dc, wavelength_mid, &
-          pref_edge, psteer, plaunch, source, masterproc, iulog, errormsg, errorflg )
+!!$     call getfil(file_name, file_path)
+!!$     call gw_movmtn_init( pver, file_path, &
+!!$          gw_dc, wavelength_mid, &
+!!$          pref_edge, psteer, plaunch, source, masterproc, iulog, errormsg, errorflg )
 
-     vort4gw_idx = pbuf_get_index('VORT4GW')
 
      call addfld ('VORT4GW', (/ 'lev' /), 'A', 's-1', &
           'Vorticity')
@@ -1047,7 +1038,7 @@ subroutine gw_drag_cam_movmtn_init(file_name, band, desc, psteer, plaunch, sourc
           'Gravity Wave Moving Mountain - flux source for moving mtn')
   end if
 
-end subroutine gw_drag_cam_movmtn_init
+end subroutine gw_drag_cam_movmtn_diag_init
 !==========================================================================
 
 
@@ -1062,7 +1053,7 @@ subroutine handle_pio_error(stat, message)
 
   call shr_assert(stat == pio_noerr, &
        "PIO error:"//trim(message)// &
-       errMsg(__FILE__, __LINE__))
+       shr_errMsg(__FILE__, __LINE__))
 
 end subroutine handle_pio_error
 
@@ -1082,6 +1073,7 @@ subroutine gw_drag_cam_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   use physconst,       only: pi
   use time_manager,    only: get_step_size
   use gw_drag,         only: gw_drag_run
+  use coords_1d,       only: Coords1D
   !------------------------------Arguments--------------------------------
   type(physics_state), intent(in) :: state   ! physics state structure
   type(physics_buffer_desc), pointer :: pbuf(:) ! Physics buffer
@@ -1138,7 +1130,7 @@ subroutine gw_drag_cam_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
   ! pbuf fields
   ! Molecular diffusivity
-  real(r8), pointer :: kvt(:,:)
+  real(r8), pointer :: kvt_in(:,:)
   real(r8) :: kvtt(state%ncol,pver+1)
   real(r8) :: sgharr(state%ncol)
 
@@ -1225,6 +1217,7 @@ subroutine gw_drag_cam_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   character(len=64)               :: scheme_name
   character(len=512)              :: errmsg
   integer                         :: errflg
+  type(Coords1D) :: p               ! Pressure coordinates
 
   !------------------------------------------------------------------------
   ! Make local copy of input state.
@@ -1243,7 +1236,7 @@ subroutine gw_drag_cam_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   piln = state1%lnpint(:ncol,:)
   zm = state1%zm(:ncol,:)
   zi = state1%zi(:ncol,:)
-
+  lat= state1%lat(:ncol)
   lq = .true.
   call physics_ptend_init(ptend, state1%psetcols, "Gravity wave drag", &
        ls=.true., lu=.true., lv=.true., lq=lq)
@@ -1257,11 +1250,12 @@ subroutine gw_drag_cam_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
      ! Initialize and calculate local molecular diffusivity
      !--------------------------------------------------------
 
-     call pbuf_get_field(pbuf, kvt_idx, kvt_in)  ! kvt_in(1:pcols,1:pver+1)
+     call pbuf_get_field(pbuf, kvt_idx, kvt_in)  ! kvtt(1:pcols,1:pver+1)
+     kvtt = kvt_in(:ncol,:)
 
   else
 
-     kvt_in = 0._r8
+     kvtt = 0._r8
 
   end if
 
@@ -1307,13 +1301,14 @@ subroutine gw_drag_cam_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   else
      sgharr=0._r8
   end if
-
+!!!!jt  There was a problem passing an unassociated pointer (ttend_sh_arr) it was temporarily replaced with real array.
+!!!!jt  Only associated when running shallow convective gravity waves.  Fix this
   call gw_drag_run( &
        ncol, pcnst, pver, cnst_type, dt, cpair, cpairv(:ncol,:,lchnk), pi, frontgf, frontga, &
        degree2radian,al0,dlat0, &
        pint, piln, pdel, pdeldry, zm, zi, lat, cam_in%landfrac, &
        dse, t, u, v, q, vort4gw, &
-       sgharr, kvt_in, ttend_dp, ttend_sh, ttend_clubb, &
+       sgharr, kvtt, ttend_dp, ttend_sh_arr, ttend_clubb, &
        thlp2_clubb_gw,wpthlp_clubb_gw,upwp_clubb_gw, vpwp_clubb_gw, &
        ptend%s, ptend%q, ptend%u, ptend%v, scheme_name, nbot_molec, &
        egwdffi_tot, flx_heat, errmsg, errflg)
@@ -1348,7 +1343,7 @@ end subroutine gw_drag_cam_tend
 !==========================================================================
 
 ! Add all history fields for a gravity wave spectrum source.
-subroutine gw_spec_addflds(prefix, scheme, ngwv, dc, history_defaults)
+subroutine gw_spec_addflds(ngwv, dc, prefix, scheme, history_defaults)
   use cam_history, only: addfld, add_default, register_vector_field
 
   !------------------------------Arguments--------------------------------
@@ -1357,8 +1352,8 @@ subroutine gw_spec_addflds(prefix, scheme, ngwv, dc, history_defaults)
   character(len=1), intent(in) :: prefix
   ! Gravity wave scheme name prepended to output field descriptions.
   character(len=*), intent(in) :: scheme
-  ! Wave speeds.
-  type(GWBand), intent(in) :: band
+  integer, intent(in)               :: ngwv
+  real(r8), intent(in)              :: dc
   ! Whether or not to call add_default for fields output by WACCM.
   logical, intent(in) :: history_defaults
 
@@ -1371,6 +1366,8 @@ subroutine gw_spec_addflds(prefix, scheme, ngwv, dc, history_defaults)
   character(len=10) :: dumc1x, dumc1y
   ! Allow 80 chars for description
   character(len=80) dumc2
+
+  real(r8), allocatable :: cref(:)
 
   !-----------------------------------------------------------------------
 
@@ -1451,13 +1448,14 @@ subroutine gw_spec_addflds(prefix, scheme, ngwv, dc, history_defaults)
      call add_default(trim(prefix)//'TAUN', 1, ' ')
      call add_default(trim(prefix)//'TAUS', 1, ' ')
   end if
+  deallocate(cref)
 
 end subroutine gw_spec_addflds
 
 !==========================================================================
 
 ! Outputs for spectral waves.
-subroutine gw_spec_outflds(prefix, lchnk, ncol, band, phase_speeds, u, v, xv, yv, &
+subroutine gw_spec_outflds(prefix, lchnk, ncol, ngwv, phase_speeds, dc, u, v, xv, yv, &
      gwut, dttdf, dttke, tau, utgw, vtgw, ttgw, taucd)
 
   use gw_common, only: west, east, south, north
@@ -1467,10 +1465,12 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, phase_speeds, u, v, xv, yv
   ! Chunk and number of columns in the chunk.
   integer, intent(in) :: lchnk
   integer, intent(in) :: ncol
+  integer, intent(in) :: ngwv
   ! Wave speeds.
-  type(GWBand), intent(in) :: band
+!jt  type(GWBand), intent(in) :: band
   ! Wave phase speeds for each column.
-  real(r8), intent(in) :: phase_speeds(ncol,-band%ngwv:band%ngwv)
+  real(r8), intent(in) :: phase_speeds(ncol,-ngwv:ngwv)
+  real(r8), intent(in) :: dc
   ! Winds at cell midpoints.
   real(r8), intent(in) :: u(ncol,pver)
   real(r8), intent(in) :: v(ncol,pver)
@@ -1478,12 +1478,12 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, phase_speeds, u, v, xv, yv
   real(r8), intent(in) :: xv(ncol)
   real(r8), intent(in) :: yv(ncol)
   ! Wind tendency for each wave.
-  real(r8), intent(in) :: gwut(ncol,pver,-band%ngwv:band%ngwv)
+  real(r8), intent(in) :: gwut(ncol,pver,-ngwv:ngwv)
   ! Temperature tendencies from diffusion and kinetic energy.
   real(r8) :: dttdf(ncol,pver)
   real(r8) :: dttke(ncol,pver)
   ! Wave Reynolds stress.
-  real(r8), intent(in) :: tau(ncol,-band%ngwv:band%ngwv,pver)
+  real(r8), intent(in) :: tau(ncol,-ngwv:ngwv,pver)
   ! Zonal and meridional total wind tendencies.
   real(r8), intent(in) :: utgw(ncol,pver)
   real(r8), intent(in) :: vtgw(ncol,pver)
@@ -1494,7 +1494,7 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, phase_speeds, u, v, xv, yv
 
   ! Indices
   integer :: i, k, l
-  integer :: ix(ncol, -band%ngwv:band%ngwv), iy(ncol, -band%ngwv:band%ngwv)
+  integer :: ix(ncol, -ngwv:ngwv), iy(ncol, -ngwv:ngwv)
   integer :: iu(ncol), iv(ncol)
 
   ! Zonal wind tendency, broken up into five bins.
@@ -1507,8 +1507,8 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, phase_speeds, u, v, xv, yv
   real(r8) :: mf(ncol, pver, 4)
 
   ! Wave stress in zonal/meridional direction
-  real(r8) :: taux(ncol,-band%ngwv:band%ngwv,pver)
-  real(r8) :: tauy(ncol,-band%ngwv:band%ngwv,pver)
+  real(r8) :: taux(ncol,-ngwv:ngwv,pver)
+  real(r8) :: tauy(ncol,-ngwv:ngwv,pver)
 
   ! Temporaries for output
   real(r8) :: dummyx(ncol,pver)
@@ -1525,7 +1525,7 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, phase_speeds, u, v, xv, yv
   ix = find_bin(phase_speeds)
 
   ! Put the wind tendency in that bin.
-  do l = -band%ngwv, band%ngwv
+  do l = -ngwv, ngwv
      do k = 1, pver
         do i = 1, ncol
            utb(i,k,ix(i,l)) = utb(i,k,ix(i,l)) + gwut(i,k,l)
@@ -1559,14 +1559,14 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, phase_speeds, u, v, xv, yv
   ! Project phase_speeds, and convert each component to a wavenumber index.
   ! These are mappings from the wavenumber index of tau to those of taux
   ! and tauy, respectively.
-  do l=-band%ngwv,band%ngwv
+  do l=-ngwv,ngwv
      ix(:,l) = c_to_l(phase_speeds(:,l)*xv)
      iy(:,l) = c_to_l(phase_speeds(:,l)*yv)
   end do
 
   ! Find projection of tau.
   do k = 1, pver
-     do l = -band%ngwv,band%ngwv
+     do l = -ngwv,ngwv
         do i = 1, ncol
            taux(i,ix(i,l),k) = taux(i,ix(i,l),k) &
                 + abs(tau(i,l,k)*xv(i))
@@ -1576,7 +1576,7 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, phase_speeds, u, v, xv, yv
      end do
   end do
 
-  do l=-band%ngwv,band%ngwv
+  do l=-ngwv,ngwv
 
      dummyx = taux(:,l,:)
      dummyy = tauy(:,l,:)
@@ -1602,7 +1602,7 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, phase_speeds, u, v, xv, yv
      ! Sum tau components in each cardinal direction.
      ! Split west/east and north/south based on whether wave speed exceeds
      ! wind speed.
-     do l = -band%ngwv, band%ngwv
+     do l = -ngwv, ngwv
 
         where (iu > l)
            mf(:,k,west) = mf(:,k,west) + taux(:,l,k)
@@ -1664,7 +1664,7 @@ contains
 
     integer :: l
 
-    l = min( max(int(c/band%dc),-band%ngwv), band%ngwv )
+    l = min( max(int(c/dc),-ngwv), ngwv )
 
   end function c_to_l
 
