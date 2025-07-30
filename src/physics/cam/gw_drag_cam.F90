@@ -222,7 +222,6 @@ module gw_drag_cam
   real(r8), pointer :: ttend_dp(:,:)
   ! Temperature change due to shallow convection.
   real(r8), pointer :: ttend_sh(:,:)
-  real(r8)          :: ttend_sh_arr(ncol,pver)
 
   !  New couplings from CLUBB
   real(r8), pointer :: ttend_clubb(:,:)
@@ -1218,6 +1217,8 @@ subroutine gw_drag_cam_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   character(len=512)              :: errmsg
   integer                         :: errflg
   type(Coords1D) :: p               ! Pressure coordinates
+
+  real(r8)          :: ttend_sh_arr(state%ncol,pver)
 
   !------------------------------------------------------------------------
   ! Make local copy of input state.
