@@ -4030,6 +4030,9 @@ end subroutine print_active_fldlst
             ierr=pio_inq_varid (tape(t)%Files(f),'ndcur   ',    tape(t)%ndcurid)
             ierr=pio_inq_varid (tape(t)%Files(f),'nscur   ',    tape(t)%nscurid)
             ierr=pio_inq_varid (tape(t)%Files(f),'nsteph  ',    tape(t)%nstephid)
+#if ( defined BFB_CAM_SCAM_IOP )
+            ierr=pio_inq_varid (tape(t)%Files(f),'tsec    ',    tape(t)%tsecid)
+#endif
          end if
          if (f == accumulated_file_index) then
             ierr=pio_inq_varid (tape(t)%Files(f),'time_bounds',   tape(t)%tbndid)
@@ -4037,7 +4040,6 @@ end subroutine print_active_fldlst
          ierr=pio_inq_varid (tape(t)%Files(f),'date_written',  tape(t)%date_writtenid)
          ierr=pio_inq_varid (tape(t)%Files(f),'time_written',  tape(t)%time_writtenid)
 #if ( defined BFB_CAM_SCAM_IOP )
-         ierr=pio_inq_varid (tape(t)%Files(f),'tsec    ',tape(t)%tsecid)
          ierr=pio_inq_varid (tape(t)%Files(f),'bdate   ',tape(t)%bdateid)
 #endif
          if (.not. is_initfile(file_index=t) .and. f == instantaneous_file_index) then
@@ -5846,11 +5848,7 @@ end subroutine print_active_fldlst
 #if ( defined BFB_CAM_SCAM_IOP )
           dtime = get_step_size()
           tsec=dtime*nstep
-          do f = 1, maxsplitfiles
-             if (pio_file_is_open(tape(t)%Files(f))) then
-                ierr = pio_put_var (tape(t)%Files(f),tape(t)%tsecid,(/start/),(/count1/),(/tsec/))
-             end if
-          end do
+          ierr = pio_put_var (tape(t)%Files(instantaneous_file_index),tape(t)%tsecid,(/start/),(/count1/),(/tsec/))
 #endif
           ierr = pio_put_var (tape(t)%Files(instantaneous_file_index),tape(t)%nstephid,(/start/),(/count1/),(/nstep/))
           startc(1) = 1
