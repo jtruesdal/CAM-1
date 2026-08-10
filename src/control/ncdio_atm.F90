@@ -17,7 +17,7 @@ module ncdio_atm
   use shr_scam_mod,   only: shr_scam_getCloseLatLon  ! Standardized system subroutines
   use spmd_utils,     only: masterproc
   use cam_abortutils, only: endrun
-  use scamMod,        only: scmlat,scmlon,single_column
+  use scamMod,        only: scmlat,scmlon,single_column, iop_file_get_id
   use cam_logfile,    only: iulog
   use string_utils,   only: to_lower
   use cam_grid_support, only: cam_grid_check, cam_grid_get_decomp, cam_grid_id, &
@@ -126,7 +126,12 @@ contains
     end if
 
     if (single_column .and. vargridname=='physgrid') then
-       vargridname='physgrid_scm'
+       ! Check if this file ID matches the IOP file
+       if (associated(iop_file_get_id()) .and. ncid%fh == iop_file_get_id()%fh) then
+          vargridname = 'physgrid_scm_iop'
+       else
+          vargridname = 'physgrid_scm'
+       end if
     end if
 
     grid_id = cam_grid_id(trim(vargridname))
@@ -320,7 +325,12 @@ contains
       end if
 
       if (single_column .and. vargridname=='physgrid') then
-         vargridname='physgrid_scm'
+         ! Check if this file ID matches the IOP file
+         if (associated(iop_file_get_id()) .and. ncid%fh == iop_file_get_id()%fh) then
+            vargridname = 'physgrid_scm_iop'
+         else
+            vargridname = 'physgrid_scm'
+         end if
       end if
 
       grid_id = cam_grid_id(trim(vargridname))
@@ -535,7 +545,12 @@ contains
 
     ! if running single column mode then we need to use scm grid to read proper column
     if (single_column .and. vargridname=='physgrid') then
-       vargridname='physgrid_scm'
+       ! Check if this file ID matches the IOP file
+       if (associated(iop_file_get_id()) .and. ncid%fh == iop_file_get_id()%fh) then
+          vargridname = 'physgrid_scm_iop'
+       else
+          vargridname = 'physgrid_scm'
+       end if
     end if
 
     grid_id = cam_grid_id(trim(vargridname))
@@ -744,7 +759,12 @@ contains
 
       ! if running single column mode then we need to use scm grid to read proper column
       if (single_column .and. vargridname=='physgrid') then
-         vargridname='physgrid_scm'
+         ! Check if this file ID matches the IOP file
+         if (associated(iop_file_get_id()) .and. ncid%fh == iop_file_get_id()%fh) then
+            vargridname = 'physgrid_scm_iop'
+         else
+            vargridname = 'physgrid_scm'
+         end if
       end if
 
       grid_id = cam_grid_id(trim(vargridname))

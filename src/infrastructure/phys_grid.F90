@@ -64,6 +64,7 @@ module phys_grid
    ! The identifier for the physics grid
    integer, parameter, public          :: phys_decomp = 100
    integer, parameter, public          :: phys_decomp_scm = 200
+   integer, parameter, public          :: phys_decomp_scm_iop = 201
 
    !! PUBLIC TYPES
 
@@ -189,6 +190,7 @@ CONTAINS
       use cam_grid_support, only: cam_grid_attribute_copy, cam_grid_attr_exists
       use shr_const_mod,    only: PI => SHR_CONST_PI
       use scamMod,          only: scmlon,scmlat,single_column,closeioplatidx,closeioplonidx
+      use scamMod,          only: closelatidx,closelonidx
 
       ! Local variables
       integer                             :: index
@@ -202,6 +204,7 @@ CONTAINS
       real(r8)                            :: lonmin, latmin
       integer(iMap),          pointer     :: grid_map(:,:)
       integer(iMap),          pointer     :: grid_map_scm(:,:)
+      integer(iMap),          pointer     :: grid_map_scm_iop(:,:)
       integer(iMap),          allocatable :: coord_map(:)
       type(horiz_coord_t),    pointer     :: lat_coord
       type(horiz_coord_t),    pointer     :: lon_coord
@@ -223,7 +226,10 @@ CONTAINS
       nullify(lonvals)
       nullify(latvals)
       nullify(grid_map)
-      if (single_column) nullify(grid_map_scm)
+      if (single_column) then
+         nullify(grid_map_scm)
+         nullify(grid_map_scm_iop)
+      end if
       nullify(lat_coord)
       nullify(lon_coord)
       nullify(area_d)
@@ -310,7 +316,9 @@ CONTAINS
             ! Copy information supplied by the dycore
             if (single_column) then
                phys_columns(col_index) = dyn_columns(scm_col_index)
-!              !scm physics only has 1 global column
+               closelonidx = phys_columns(col_index)%global_col_num
+               closelatidx = phys_columns(col_index)%global_col_num
+               !scm physics only has 1 global column
                phys_columns(col_index)%global_col_num = 1
                phys_columns(col_index)%coord_indices(:)=scm_col_index
             else
@@ -335,13 +343,22 @@ CONTAINS
       ! unstructured
       if (unstructured) then
          allocate(grid_map(3, pcols * (endchunk - begchunk + 1)))
-         if (single_column) allocate(grid_map_scm(3, pcols * (endchunk - begchunk + 1)))
+         if (single_column) then
+            allocate(grid_map_scm(3, pcols * (endchunk - begchunk + 1)))
+            allocate(grid_map_scm_iop(3, pcols * (endchunk - begchunk + 1)))
+         end if
       else
          allocate(grid_map(4, pcols * (endchunk - begchunk + 1)))
-         if (single_column) allocate(grid_map_scm(4, pcols * (endchunk - begchunk + 1)))
+         if (single_column) then
+            allocate(grid_map_scm(4, pcols * (endchunk - begchunk + 1)))
+            allocate(grid_map_scm_iop(4, pcols * (endchunk - begchunk + 1)))
+         end if
       end if
       grid_map = 0_iMap
-      if (single_column) grid_map_scm = 0_iMap
+      if (single_column) then
+         grid_map_scm = 0_iMap
+         grid_map_scm_iop = 0_iMap
+      end if
       allocate(latvals(size(grid_map, 2)))
       allocate(lonvals(size(grid_map, 2)))
 
@@ -372,26 +389,37 @@ CONTAINS
             if (single_column) then
                grid_map_scm(1, index) = int(icol, iMap)
                grid_map_scm(2, index) = int(ichnk, iMap)
+               grid_map_scm_iop(1, index) = int(icol, iMap)
+               grid_map_scm_iop(2, index) = int(ichnk, iMap)
             end if
             if (icol <= ncol) then
                if (unstructured) then
                   gcol = phys_columns(col_index)%global_col_num
                   if (gcol > 0) then
                     grid_map(3, index) = int(gcol, iMap)
-                    if (single_column) grid_map_scm(3, index) = closeioplonidx
+                    if (single_column) then
+                       grid_map_scm(3, index) = closelonidx
+                       grid_map_scm_iop(3, index) = closeioplonidx
+                    end if
                   end if ! else entry remains 0
                else
                   ! lon
                   gcol = phys_columns(col_index)%coord_indices(1)
                   if (gcol > 0) then
                      grid_map(3, index) = int(gcol, iMap)
-                     if (single_column) grid_map_scm(3, index) = closeioplonidx
+                     if (single_column) then
+                        grid_map_scm(3, index) = closelonidx
+                        grid_map_scm_iop(3, index) = closeioplonidx
+                     end if
                   end if ! else entry remains 0
                   ! lat
                   gcol = phys_columns(col_index)%coord_indices(2)
                   if (gcol > 0) then
                      grid_map(4, index) = gcol
-                     if (single_column) grid_map_scm(4, index) = closeioplatidx
+                     if (single_column) then
+                        grid_map_scm(4, index) = closelatidx
+                        grid_map_scm_iop(4, index) = closeioplatidx
+                     end if
                   end if ! else entry remains 0
                end if
             end if ! Else entry remains 0
@@ -444,8 +472,12 @@ CONTAINS
       end if
       call cam_grid_register('physgrid', phys_decomp, lat_coord, lon_coord,   &
            grid_map, unstruct=unstructured, block_indexed=.true.)
-      if (single_column) call cam_grid_register('physgrid_scm', phys_decomp_scm, lat_coord, lon_coord,   &
-           grid_map_scm, unstruct=unstructured, block_indexed=.true.)
+      if (single_column) then
+         call cam_grid_register('physgrid_scm', phys_decomp_scm, lat_coord, lon_coord,   &
+              grid_map_scm, unstruct=unstructured, block_indexed=.true.)
+         call cam_grid_register('physgrid_scm_iop', phys_decomp_scm_iop, lat_coord, lon_coord,   &
+              grid_map_scm_iop, unstruct=unstructured, block_indexed=.true.)
+      end if
       ! Copy required attributes from the dynamics array
       nullify(copy_attributes)
       call physgrid_copy_attributes_d(copy_gridname, copy_attributes)
