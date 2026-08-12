@@ -15,6 +15,7 @@ use pio,              only: file_desc_t, pio_offset_kind, pio_global, &
                             pio_closefile
 use cam_logfile,      only: iulog
 use cam_abortutils,   only: endrun
+use scamMod,          only: iopfile, single_column
 
 implicit none
 private
@@ -27,6 +28,7 @@ public :: &
    cam_initfiles_open,        &! open initial and topo files
    initial_file_get_id,       &! returns filehandle for initial file
    topo_file_get_id,          &! returns filehandle for topo file
+   iop_file_get_id,           &! returns filehandle for iopfile
    cam_initfiles_get_caseid,  &! return caseid from initial restart file
    cam_initfiles_get_restdir, &! return caseid from initial restart file
    cam_initfiles_close         ! close initial and topo files
@@ -51,6 +53,7 @@ character(len=cl) :: caseid_prev = ' '
 
 type(file_desc_t), pointer :: fh_ini  => null()
 type(file_desc_t), pointer :: fh_topo => null()
+type(file_desc_t), pointer :: fh_iop => null()
 type(file_desc_t), target  :: fh_restart
 
 !========================================================================================
@@ -65,7 +68,7 @@ subroutine cam_initfiles_readnl(nlfile)
                               mpichar=>mpi_character, mpi_logical
    use cam_instance,    only: inst_suffix
    use filenames,       only: interpret_filename_spec
-   
+
    character(len=*), intent(in) :: nlfile  ! filepath for file containing namelist input
 
    ! Local variables
@@ -214,6 +217,8 @@ subroutine cam_initfiles_open()
 
    character(len=256) :: ncdata_loc     ! filepath of initial file on local disk
    character(len=256) :: bnd_topo_loc   ! filepath of topo file on local disk
+   character(len=256) :: iopfile_loc    ! filepath of iopfile on local disk
+   character(len=*), parameter :: sub = 'cam_initfiles_open'
    !-----------------------------------------------------------------------
 
    ! Open initial dataset
@@ -245,6 +250,16 @@ subroutine cam_initfiles_open()
       nullify(fh_topo)
    end if
 
+   if (single_column) then
+      ! open iop and get file_handle for ncdio.
+      call getfil(iopfile, iopfile_loc)
+      allocate(fh_iop)
+      call cam_pio_openfile(fh_iop, iopfile_loc, pio_nowrite)
+   else
+      nullify(fh_iop)
+   end if
+
+
 end subroutine cam_initfiles_open
 
 !=======================================================================
@@ -260,6 +275,17 @@ function topo_file_get_id()
    type(file_desc_t), pointer :: topo_file_get_id
    topo_file_get_id => fh_topo
 end function topo_file_get_id
+
+!=======================================================================
+
+function iop_file_get_id()
+   type(file_desc_t), pointer :: iop_file_get_id
+   if (single_column) then
+      iop_file_get_id => fh_iop
+   else
+      call endrun ('ERROR: iop_file_get_id unavailable when single_column is false')
+   end if
+end function iop_file_get_id
 
 !=======================================================================
 
