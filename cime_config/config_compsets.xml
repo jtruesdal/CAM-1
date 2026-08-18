@@ -110,6 +110,17 @@
     <lname>2000_CAM60_SLND_SICE_DOCN%AQPCONST_SROF_SGLC_SWAV</lname>
   </compset>
 
+
+  <compset>
+    <alias>FSCAMHISTC_LTso</alias>
+    <lname>HIST_CAM70%LT%SCAM_CLM60%SP_CICE%PRES_DOCN%DOM_SROF_SGLC_SWAV</lname>
+  </compset>
+
+  <compset>
+    <alias>FSCAMHISTC_MTso</alias>
+    <lname>HIST_CAM70%MT%SCAM_CLM60%SP_CICE%PRES_DOCN%DOM_SROF_SGLC_SWAV</lname>
+  </compset>
+
   <compset>
     <alias>FSCAMARM95</alias>
     <lname>2000_CAM60%SCAMARM95_CLM50%SP_CICE%PRES_DOCN%DOM_SROF_SGLC_SWAV</lname>

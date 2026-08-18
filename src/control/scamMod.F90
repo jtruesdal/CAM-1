@@ -32,9 +32,6 @@ use cam_logfile,    only: iulog
 use cam_abortutils, only: endrun
 use time_manager,   only: get_curr_date, get_nstep,is_first_step,get_start_date,timemgr_time_inc
 use error_messages, only: handle_ncerr
-use cam_pio_utils,  only: cam_pio_openfile
-use pio,            only: file_desc_t, pio_nowrite
-use ioFileMod,        only: getfil
 
 
 
@@ -49,7 +46,6 @@ public :: setiopupdate        ! find index in iopboundary data for current time
 public :: plevs0              ! Define the pressures of the interfaces and midpoints
 public :: scmiop_flbc_inti
 public :: setiopupdate_init
-public :: iop_file_get_id     ! returns filehandle for iop file
 
 ! PUBLIC MODULE DATA:
 
@@ -254,7 +250,6 @@ character(len=200), public ::  scm_clubb_iop_name   ! IOP name for CLUBB
 integer, allocatable, public :: tsec(:)
 integer, public :: ntime
 
-type(file_desc_t), pointer :: fh_iop => null()
 !=======================================================================
 contains
 !=======================================================================
@@ -280,7 +275,6 @@ subroutine scam_readnl(nlfile,single_column_in,scmlat_in,scmlon_in)
   integer  :: ncid
   integer  :: iatt
   logical  :: adv
-  character(len=256) :: iopfile_loc     ! filepath of initial file on local disk
 
 ! this list should include any variable that you might want to include in the namelist
   namelist /scam_nl/ iopfile, scm_iop_lhflxshflxTg, scm_iop_Tg, scm_relaxation, &
@@ -399,18 +393,9 @@ subroutine scam_readnl(nlfile,single_column_in,scmlat_in,scmlon_in)
         call endrun(sub // ':: ERROR closing iop file')
      end if
 
-     ! open iop and get file_handle for ncdio.
-     call getfil(iopfile, iopfile_loc)
-     allocate(fh_iop)
-     call cam_pio_openfile(fh_iop, iopfile_loc, pio_nowrite)
   end if
 
 end subroutine scam_readnl
-
-function iop_file_get_id()
-   type(file_desc_t), pointer :: iop_file_get_id
-   iop_file_get_id => fh_iop
-end function iop_file_get_id
 
 subroutine readiopdata(hyam, hybm, hyai, hybi, ps0)
 !-----------------------------------------------------------------------
