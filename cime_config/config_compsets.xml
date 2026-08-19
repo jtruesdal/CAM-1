@@ -88,6 +88,11 @@
 <!--    <science_support grid="f09_f09_mg17"/> -->
   </compset>
 
+  <compset>
+    <alias>FSCAMHIST_BGC</alias>
+    <lname>HIST_CAM60%SCAM_CLM50%BGC-CROP_CICE%PRES_DOCN%DOM_SROF_SGLC_SWAV</lname>
+  </compset>
+
   <!-- CAM simpler model compsets -->
 
   <compset>
