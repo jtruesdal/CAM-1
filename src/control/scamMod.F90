@@ -58,7 +58,7 @@ integer,  public ::  closeioplonidx   ! file array index closest iop longitude f
 
 
 integer, parameter :: num_switches = 20
-integer, parameter :: max_path_len = 128
+integer, parameter :: max_path_len = 256
 
 logical, public ::  single_column         ! Using IOP file or not
 logical, public ::  use_iop               ! Using IOP file or not

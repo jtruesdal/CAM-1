@@ -42,7 +42,7 @@ class SCT(SystemTestsCompareTwo):
         case_name = self._case.get_value("CASE")
         RUN_STARTDATE = self._case1.get_value("RUN_STARTDATE")
         append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "NDENS    = 1,1,1,1,1,1")
-        append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "MFILT    = 1,7,1,1,1,1")
+        append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "MFILT    = 1,10000,1,1,1,1")
         append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "nhtfrq   = 1,1,1,1,1,1")
         append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "fincl2='T','Q','TDIFF','QDIFF','LANDFRAC'")
         append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "iopfile = '../"+case_name+".cam.h1i."+RUN_STARTDATE+"-00000.nc'")

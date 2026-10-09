@@ -1,0 +1,5 @@
+NDENS    = 1,1
+MFILT    = 10000,10000
+nhtfrq   = 0,1
+inithist_all = .true.
+write_nstep0 = .true.
