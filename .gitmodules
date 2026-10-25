@@ -139,7 +139,7 @@ fxDONOTUSEurl = https://github.com/ESCOMP/mizuRoute
 [submodule "ccs_config"]
 path = ccs_config
 url = https://github.com/jtruesdal/ccs_config_cesm.git
-fxtag = ccs_config_cesm1.0.87_compassdev
+fxtag = ccs_config_cesm1.0.87_compassdev.01
 fxrequired = ToplevelRequired
 fxDONOTUSEurl = https://github.com/jtruesdal/ccs_config_cesm.git
 
@@ -180,10 +180,10 @@ fxDONOTUSEurl = https://github.com/NCAR/ParallelIO
 
 [submodule "cice"]
 path = components/cice
-url = https://github.com/ESCOMP/CESM_CICE
-fxtag = cesm3_cice6_6_3_16
+url = https://github.com/jtruesdal/CESM_CICE
+fxtag = cesm3_cice6_6_3_16_compassdev
 fxrequired = ToplevelRequired
-fxDONOTUSEurl = https://github.com/ESCOMP/CESM_CICE
+fxDONOTUSEurl = https://github.com/jtruesdal/CESM_CICE
 
 [submodule "clm"]
 path = components/clm
