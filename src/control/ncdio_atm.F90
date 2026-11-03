@@ -126,7 +126,7 @@ contains
     end if
 
     if (single_column .and. vargridname=='physgrid') then
-       vargridname='physgrid_scm'
+       vargridname = scm_read_gridname(ncid, varname, dimname1)
     end if
 
     grid_id = cam_grid_id(trim(vargridname))
@@ -320,7 +320,7 @@ contains
       end if
 
       if (single_column .and. vargridname=='physgrid') then
-         vargridname='physgrid_scm'
+         vargridname = scm_read_gridname(ncid, varname, dimname1)
       end if
 
       grid_id = cam_grid_id(trim(vargridname))
@@ -535,7 +535,7 @@ contains
 
     ! if running single column mode then we need to use scm grid to read proper column
     if (single_column .and. vargridname=='physgrid') then
-       vargridname='physgrid_scm'
+       vargridname = scm_read_gridname(ncid, varname, dimname1)
     end if
 
     grid_id = cam_grid_id(trim(vargridname))
@@ -744,7 +744,7 @@ contains
 
       ! if running single column mode then we need to use scm grid to read proper column
       if (single_column .and. vargridname=='physgrid') then
-         vargridname='physgrid_scm'
+         vargridname = scm_read_gridname(ncid, varname, dimname1)
       end if
 
       grid_id = cam_grid_id(trim(vargridname))
@@ -887,5 +887,59 @@ contains
 
   end subroutine infld_real_3d_3d
 
+
+  !-----------------------------------------------------------------------
+  !
+  ! scm_read_gridname: choose the single-column read decomposition from the
+  ! horizontal size of the file being read.  Files on the IOP file's grid
+  ! are read at the IOP column (physgrid_scm_iop); files on the SCAM model
+  ! grid are read at the model-grid column (physgrid_scm).  When the two
+  ! grids are the same the IOP column is used, as before.
+  !
+  !-----------------------------------------------------------------------
+  function scm_read_gridname(ncid, varname, dimname1) result(gname)
+    use pio,              only: pio_inq_dimid, pio_inq_dimlen, pio_seterrorhandling, &
+                                PIO_BCAST_ERROR, PIO_NOERR
+    use scamMod,          only: iop_ncol, scm_model_ncol
+    use cam_grid_support, only: cam_grid_is_unstructured
+
+    type(file_desc_t), intent(inout) :: ncid
+    character(len=*),  intent(in)    :: varname
+    character(len=*),  intent(in)    :: dimname1
+    character(len=max_hcoordname_len) :: gname
+
+    integer :: dimid, len1, len2, nhoriz, ierr, err_handling
+    character(len=*), parameter :: sub = 'scm_read_gridname: '
+
+    call pio_seterrorhandling(ncid, PIO_BCAST_ERROR, err_handling)
+    ierr = pio_inq_dimid(ncid, trim(dimname1), dimid)
+    if (ierr /= PIO_NOERR) then
+       call endrun(sub//'dimension '//trim(dimname1)//' not found for '//trim(varname))
+    end if
+    ierr = pio_inq_dimlen(ncid, dimid, len1)
+    nhoriz = len1
+    if (.not. cam_grid_is_unstructured(cam_grid_id('physgrid'))) then
+       ! structured grid: the horizontal size is nlon*nlat
+       ierr = pio_inq_dimid(ncid, 'lat', dimid)
+       if (ierr == PIO_NOERR) then
+          ierr = pio_inq_dimlen(ncid, dimid, len2)
+          nhoriz = len1*len2
+       end if
+    end if
+    call pio_seterrorhandling(ncid, err_handling)
+
+    if (nhoriz == iop_ncol) then
+       gname = 'physgrid_scm_iop'
+    else if (nhoriz == scm_model_ncol) then
+       gname = 'physgrid_scm'
+    else
+       if (masterproc) then
+          write(iulog,*) sub, trim(varname), ': file columns = ', nhoriz, &
+               ', IOP grid columns = ', iop_ncol, ', model grid columns = ', scm_model_ncol
+       end if
+       call endrun(sub//trim(varname)//' is on neither the IOP grid nor the model grid')
+    end if
+
+  end function scm_read_gridname
 
 end module ncdio_atm

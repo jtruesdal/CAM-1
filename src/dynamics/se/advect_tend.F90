@@ -119,6 +119,7 @@ contains
     real(r8), allocatable        :: out_u(:,:)
     real(r8), allocatable        :: out_v(:,:)
     real(r8), allocatable        :: out_ps(:)
+    real(r8), allocatable        :: out_clat(:), out_clon(:), out_area(:)
 
     integer  :: i,j,ic,nx,ie,nxsq,p
     integer  :: ierr
@@ -207,7 +208,23 @@ contains
       allocate( out_ps(npsq),stat=ierr )
       if (ierr/=0) call endrun( sub//': not able to allocate out_ps' )
       out_ps = 0._r8
+      allocate( out_clat(npsq), out_clon(npsq), out_area(npsq), stat=ierr )
+      if (ierr/=0) call endrun( sub//': not able to allocate out_clat/out_clon/out_area' )
       do ie=nets,nete
+         if (.not. use_cslam) then
+            ! Physics columns are the GLL points: write their exact geometry,
+            ! computed as in get_dyn_grid_info (dyn_grid.F90).
+            do j=1,np
+               do i=1,np
+                  out_clat(i+(j-1)*np) = elem(ie)%spherep(i,j)%lat
+                  out_clon(i+(j-1)*np) = elem(ie)%spherep(i,j)%lon
+                  out_area(i+(j-1)*np) = 1.0_r8 / elem(ie)%rspheremp(i,j)
+               end do
+            end do
+            call outfld('scm_clat',out_clat,npsq,ie)
+            call outfld('scm_clon',out_clon,npsq,ie)
+            call outfld('scm_area',out_area,npsq,ie)
+         end if
          do j=1,nx
             do i=1,nx
                t_adv(i+(j-1)*np,:) = iop_ttendxyz(i,j,:,ie)/dt - elem(ie)%derived%FT(i,j,:)
@@ -252,6 +269,7 @@ contains
       deallocate(out_u)
       deallocate(out_v)
       deallocate(out_ps)
+      deallocate(out_clat, out_clon, out_area)
       deallocate(t_adv)
       deallocate(q_adv)
       deallocate(q_new)

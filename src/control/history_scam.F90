@@ -160,6 +160,17 @@ CONTAINS
        call add_default ('beta',2,' ')
     end if
 
+    if (trim(outgrid) == 'GLL') then
+       ! Exact column geometry, so SCAM can run this column bit-for-bit on any
+       ! SE model grid (see scm_read_iop_geometry in scamMod).
+       call addfld ('scm_clat', horiz_only, 'A', 'radians', 'Column latitude for SCAM',  gridname=trim(outgrid))
+       call add_default ('scm_clat',2,' ')
+       call addfld ('scm_clon', horiz_only, 'A', 'radians', 'Column longitude for SCAM', gridname=trim(outgrid))
+       call add_default ('scm_clon',2,' ')
+       call addfld ('scm_area', horiz_only, 'A', 'sr',      'Column area for SCAM',      gridname=trim(outgrid))
+       call add_default ('scm_area',2,' ')
+    end if
+
     call addfld ('q',       (/ 'lev' /),  'A', 'kg/kg',  'Q for scam',gridname=trim(outgrid))
     call add_default ('q',2, ' ')
     call addfld ('u',       (/ 'lev' /),  'A', 'm/s',    'U for scam',gridname=trim(outgrid))

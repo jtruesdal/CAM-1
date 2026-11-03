@@ -34,6 +34,7 @@ use time_manager,   only: get_curr_date, get_nstep,is_first_step,get_start_date,
 use error_messages, only: handle_ncerr
 
 
+
 implicit none
 private
 
@@ -55,6 +56,13 @@ real(r8), public ::  closeioplat   ! closest iop latitude for scam
 real(r8), public ::  closeioplon   ! closest iop longitude for scam
 integer,  public ::  closeioplatidx   ! file array index of closest iop latitude for scam
 integer,  public ::  closeioplonidx   ! file array index closest iop longitude for scam
+integer,  public ::  closelatidx   ! file array index of closest iop latitude for scam
+integer,  public ::  closelonidx   ! file array index closest iop longitude for scam
+integer,  public ::  iop_ncol = -1          ! number of horizontal columns in the IOP file
+integer,  public ::  scm_model_ncol = -1    ! number of horizontal columns in the SCAM model grid
+logical,  public ::  have_iop_geometry = .false. ! IOP file supplies the exact column geometry
+real(r8), public ::  iop_lat_rad, iop_lon_rad   ! exact column coordinates (radians) from the IOP file
+real(r8), public ::  iop_area                   ! exact column area from the IOP file
 
 
 integer, parameter :: num_switches = 20
@@ -344,6 +352,7 @@ subroutine scam_readnl(nlfile,single_column_in,scmlat_in,scmlon_in)
         scmlat = closeioplat
         scmlon = closeioplon
      end if
+     call scm_read_iop_geometry(ncid)
 
      if (masterproc) then
         write (iulog,*) 'Single Column Model Options: '
@@ -385,9 +394,102 @@ subroutine scam_readnl(nlfile,single_column_in,scmlat_in,scmlon_in)
         end do
         print *
      end if
+     ierr = NF90_CLOSE ( ncid )
+     if (ierr /= 0) then
+        call endrun(sub // ':: ERROR closing iop file')
+     end if
+
   end if
 
 end subroutine scam_readnl
+
+subroutine scm_read_iop_geometry(ncid)
+!-----------------------------------------------------------------------
+! Read the horizontal size of the IOP file and, when the file provides
+! them (CAMIOP output from an SE run: scm_clat, scm_clon, scm_area), the
+! exact coordinates and area of the selected column. The SCAM model grid
+! can then be any SE grid ("container" grid) while physics sees exactly
+! the column of the run that wrote the IOP file.
+!-----------------------------------------------------------------------
+   integer, intent(in) :: ncid
+
+   integer  :: dimid, ierr, nlat, nlon, ntime, itime
+   real(r8) :: val(1)
+   character(len=*), parameter :: sub = 'scm_read_iop_geometry'
+
+   have_iop_geometry = .false.
+   if (nf90_inq_dimid(ncid, 'ncol', dimid) == NF90_NOERR) then
+      ierr = nf90_inquire_dimension(ncid, dimid, len=iop_ncol)
+   else
+      nlat = 1
+      nlon = 1
+      if (nf90_inq_dimid(ncid, 'lat', dimid) == NF90_NOERR) &
+           ierr = nf90_inquire_dimension(ncid, dimid, len=nlat)
+      if (nf90_inq_dimid(ncid, 'lon', dimid) == NF90_NOERR) &
+           ierr = nf90_inquire_dimension(ncid, dimid, len=nlon)
+      iop_ncol = nlat*nlon
+      return    ! exact geometry is only written for unstructured (SE) grids
+   end if
+
+   ! The exact geometry belongs to the IOP column, so it only applies when
+   ! that column is used (scm_force_latlon false).
+   if (scm_force_latlon) return
+
+   ! CAMIOP fields are first written after the initial time sample, so use
+   ! the first time sample that holds a valid column area.
+   ntime = 1
+   if (nf90_inq_dimid(ncid, 'time', dimid) == NF90_NOERR) &
+        ierr = nf90_inquire_dimension(ncid, dimid, len=ntime)
+   do itime = 1, min(ntime, 5)
+      if (.not. iop_get_col(ncid, 'scm_area', itime, iop_area)) exit
+      if (iop_area > 0._r8 .and. iop_area < 13._r8) then
+         if (iop_get_col(ncid, 'scm_clat', itime, iop_lat_rad) .and. &
+             iop_get_col(ncid, 'scm_clon', itime, iop_lon_rad)) then
+            have_iop_geometry = .true.
+         end if
+         exit
+      end if
+   end do
+
+   if (masterproc) then
+      write(iulog,*) sub//': IOP file horizontal columns = ', iop_ncol
+      if (have_iop_geometry) then
+         write(iulog,*) sub//': using exact IOP column geometry: lat, lon (rad), area = ', &
+              iop_lat_rad, iop_lon_rad, iop_area
+      else
+         write(iulog,*) sub//': IOP file has no column geometry (scm_clat/scm_clon/scm_area);'
+         write(iulog,*) sub//': physics uses the SCAM model grid column geometry'
+      end if
+   end if
+
+contains
+
+   logical function iop_get_col(ncid, name, itime, x)
+      ! Value of a (time, ncol) or (ncol) variable at the selected column.
+      integer,          intent(in)  :: ncid
+      character(len=*), intent(in)  :: name
+      integer,          intent(in)  :: itime
+      real(r8),         intent(out) :: x
+      integer :: vid, nd, st
+      integer :: strt(2), cnt(2)
+      iop_get_col = .false.
+      if (nf90_inq_varid(ncid, name, vid) /= NF90_NOERR) return
+      st = nf90_inquire_variable(ncid, vid, ndims=nd)
+      strt(1) = closeioplonidx
+      strt(2) = itime
+      cnt = 1
+      if (nd == 1) then
+         st = nf90_get_var(ncid, vid, val, start=strt(1:1), count=cnt(1:1))
+      else
+         st = nf90_get_var(ncid, vid, val, start=strt(1:2), count=cnt(1:2))
+      end if
+      if (st /= NF90_NOERR) return
+      x = val(1)
+      iop_get_col = .true.
+   end function iop_get_col
+
+end subroutine scm_read_iop_geometry
+
 subroutine readiopdata(hyam, hybm, hyai, hybi, ps0)
 !-----------------------------------------------------------------------
 !
