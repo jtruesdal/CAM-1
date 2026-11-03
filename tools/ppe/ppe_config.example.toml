@@ -1,0 +1,73 @@
+# SCAM PPE configuration. Copy to your PPE area and edit.
+# Paths are absolute so the scripts run from anywhere.
+
+case = "/glade/campaign/cgd/amp/jet/cases/CAM.F2000climo_SROF.ne30_ne30_mg17.intel.CAMIOP.SCAM.100"
+base_rundir = "/glade/campaign/cgd/amp/jet/cases/CAM.F2000climo_SROF.ne30_ne30_mg17.intel.CAMIOP.SCAM.100/run"
+exe = "/glade/campaign/cgd/amp/jet/cases/CAM.F2000climo_SROF.ne30_ne30_mg17.intel.CAMIOP.SCAM.100/bld/cesm.exe"
+env_file = "/glade/campaign/cgd/amp/jet/cases/CAM.F2000climo_SROF.ne30_ne30_mg17.intel.CAMIOP.SCAM.100/.env_mach_specific.sh"
+ppe_root = "/glade/derecho/scratch/jet/scam_ppe/manus_5d"
+
+[sampling]
+n_members = 20
+seed = 20261102
+
+[run]
+machine = "derecho"         # derecho | izumi (izumi: no account/priority;
+                            # queue short/medium/shared, ~8 members/node)
+account = "CHANGEME"        # derecho only
+queue = "main"
+job_priority = "premium"   # economy | regular | premium
+walltime = "01:00:00"
+max_parallel = 24          # ~8.5 GB per debug SCAM member
+# Optional partial-node request (e.g. small tests on the develop queue):
+# ncpus = 4
+# mem = "40GB"
+# Optional: override run length in every member's nuopc.runconfig.
+# stop = { stop_option = "ndays", stop_n = 5 }
+
+# Parameter ranges follow Eidhammer et al. (2024, GMD 17, 7835), Table 1.
+# scale = "log" samples uniformly in log space.
+[params.zmconv_c0_ocn]
+range = [0.01, 0.1]
+scale = "log"
+
+[params.zmconv_ke]
+range = [1.0e-6, 1.0e-5]
+scale = "log"
+
+[params.zmconv_tau]
+range = [1800.0, 10800.0]
+scale = "log"
+
+[params.zmconv_dmpdz]
+range = [-2.0e-3, -0.4e-3]
+scale = "linear"
+
+[params.zmconv_capelmt]
+range = [35.0, 350.0]
+scale = "log"
+
+[params.clubb_gamma_coef]
+range = [0.25, 0.35]
+
+[params.clubb_c14]
+range = [0.4, 2.2]
+
+[params.clubb_c11]
+range = [0.2, 0.8]
+
+[params.clubb_c11b]
+range = [0.2, 0.8]
+
+[params.clubb_beta]
+range = [1.6, 2.5]
+
+[params.micro_mg_autocon_fact]
+range = [0.005, 0.2]
+scale = "log"
+
+[analysis]
+# Hours dropped from the start of each member before computing metrics.
+spinup_hours = 24
+# Pressure band (hPa) for the mass-weighted scalar metrics.
+p_range_hpa = [100.0, 1000.0]

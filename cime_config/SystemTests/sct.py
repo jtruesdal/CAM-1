@@ -10,6 +10,7 @@ only have round off differences.
 
 """
 
+import os
 from CIME.SystemTests.system_tests_compare_two import SystemTestsCompareTwo
 from CIME.XML.standard_module_setup import *
 from CIME.SystemTests.test_utils.user_nl_utils import append_to_user_nl_files
@@ -35,6 +36,29 @@ class SCT(SystemTestsCompareTwo):
 
         CAM_CONFIG_OPTS = self._case1.get_value("CAM_CONFIG_OPTS")
         self._case.set_value("BFBFLAG","TRUE")
+
+        # A testmod may choose the SCAM column by setting PTS_LAT/PTS_LON.
+        # A valid PTS_LAT/PTS_LON would put the 3D run into single-column
+        # mode (scol_lat/scol_lon in nuopc.runconfig), so save the values
+        # for case two and reset case one to global.
+        pts_lat = float(self._case.get_value("PTS_LAT"))
+        pts_lon = float(self._case.get_value("PTS_LON"))
+        if pts_lat > -999. and pts_lon > -999.:
+            with open(self._scm_column_file(), "w") as f:
+                f.write("{!r} {!r}\n".format(pts_lat, pts_lon))
+            self._case.set_value("PTS_LAT", -999.)
+            self._case.set_value("PTS_LON", -999.)
+
+    def _scm_column_file(self):
+        return os.path.join(self._case1.get_value("CASEROOT"), "sct_scm_column")
+
+    def _scm_column(self, default_lat, default_lon):
+        """SCAM column from the testmod (saved in case one) or the default."""
+        if os.path.isfile(self._scm_column_file()):
+            with open(self._scm_column_file()) as f:
+                lat, lon = (float(x) for x in f.read().split())
+            return lat, lon
+        return default_lat, default_lon
 
 
 
@@ -64,13 +88,15 @@ class SCT(SystemTestsCompareTwo):
         CAM_CONFIG_OPTS = self._case1.get_value("CAM_CONFIG_OPTS").replace('-camiop','')
         self._case.set_value("CAM_CONFIG_OPTS","{} -scam camfrc ".format(CAM_CONFIG_OPTS))
         if self._case.get_value("CAM_DYCORE") == "se":
-            self._case.set_value("PTS_LAT",44.80320177421346)
-            self._case.set_value("PTS_LON",276.7082039324993)
+            lat, lon = self._scm_column(44.80320177421346, 276.7082039324993)
+            self._case.set_value("PTS_LAT",lat)
+            self._case.set_value("PTS_LON",lon)
             append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "scale_dry_air_mass     = 0.0D0")
         else:
             append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "ncdata = '../"+case_name+".cam.i."+RUN_STARTDATE+"-00000.nc'")
-            self._case.set_value("PTS_LAT",-20.0)
-            self._case.set_value("PTS_LON",140.0)
+            lat, lon = self._scm_column(-20.0, 140.0)
+            self._case.set_value("PTS_LAT",lat)
+            self._case.set_value("PTS_LON",lon)
 
         self._case.set_value("STOP_N",5)
         self._case.case_setup(test_mode=True, reset=True)
