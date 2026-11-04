@@ -898,35 +898,37 @@ contains
   !
   !-----------------------------------------------------------------------
   function scm_read_gridname(ncid, varname, dimname1) result(gname)
-    use pio,              only: pio_inq_dimid, pio_inq_dimlen, pio_seterrorhandling, &
-                                PIO_BCAST_ERROR, PIO_NOERR
+    use pio,              only: var_desc_t, pio_inq_varndims, pio_inq_vardimid, &
+                                pio_inq_dimlen, PIO_MAX_VAR_DIMS
+    use cam_pio_utils,    only: cam_pio_find_var
     use scamMod,          only: iop_ncol, scm_model_ncol
     use cam_grid_support, only: cam_grid_is_unstructured
 
     type(file_desc_t), intent(inout) :: ncid
     character(len=*),  intent(in)    :: varname
-    character(len=*),  intent(in)    :: dimname1
+    character(len=*),  intent(in)    :: dimname1 ! name the caller expects (used in messages only)
     character(len=max_hcoordname_len) :: gname
 
-    integer :: dimid, len1, len2, nhoriz, ierr, err_handling
+    type(var_desc_t) :: vardesc
+    logical          :: found
+    integer          :: ndims, ierr, len1, len2, nhoriz
+    integer          :: dimids(PIO_MAX_VAR_DIMS)
     character(len=*), parameter :: sub = 'scm_read_gridname: '
 
-    call pio_seterrorhandling(ncid, PIO_BCAST_ERROR, err_handling)
-    ierr = pio_inq_dimid(ncid, trim(dimname1), dimid)
-    if (ierr /= PIO_NOERR) then
-       call endrun(sub//'dimension '//trim(dimname1)//' not found for '//trim(varname))
-    end if
-    ierr = pio_inq_dimlen(ncid, dimid, len1)
+    ! The horizontal size comes from the variable's own dimensions on the file,
+    ! because the column dimension's name differs between files (ncol, ncol_d).
+    gname = 'physgrid_scm_iop'
+    call cam_pio_find_var(ncid, trim(varname), vardesc, found)
+    if (.not. found) return     ! infld reports the missing variable as before
+    ierr = pio_inq_varndims(ncid, vardesc, ndims)
+    ierr = pio_inq_vardimid(ncid, vardesc, dimids(1:ndims))
+    ierr = pio_inq_dimlen(ncid, dimids(1), len1)
     nhoriz = len1
-    if (.not. cam_grid_is_unstructured(cam_grid_id('physgrid'))) then
-       ! structured grid: the horizontal size is nlon*nlat
-       ierr = pio_inq_dimid(ncid, 'lat', dimid)
-       if (ierr == PIO_NOERR) then
-          ierr = pio_inq_dimlen(ncid, dimid, len2)
-          nhoriz = len1*len2
-       end if
+    if (.not. cam_grid_is_unstructured(cam_grid_id('physgrid')) .and. ndims > 1) then
+       ! structured grid: the first two dimensions are lon, lat
+       ierr = pio_inq_dimlen(ncid, dimids(2), len2)
+       nhoriz = len1*len2
     end if
-    call pio_seterrorhandling(ncid, err_handling)
 
     if (nhoriz == iop_ncol) then
        gname = 'physgrid_scm_iop'
@@ -934,7 +936,7 @@ contains
        gname = 'physgrid_scm'
     else
        if (masterproc) then
-          write(iulog,*) sub, trim(varname), ': file columns = ', nhoriz, &
+          write(iulog,*) sub, trim(varname), ' (', trim(dimname1), '): file columns = ', nhoriz, &
                ', IOP grid columns = ', iop_ncol, ', model grid columns = ', scm_model_ncol
        end if
        call endrun(sub//trim(varname)//' is on neither the IOP grid nor the model grid')
