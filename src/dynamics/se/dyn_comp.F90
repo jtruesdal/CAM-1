@@ -2233,11 +2233,24 @@ subroutine read_dyn_field_2d(fieldname, fh, dimname, buffer)
    ! Local variables
    logical                  :: found
    real(r8)                 :: fillvalue
+   integer                  :: ie
    !----------------------------------------------------------------------------
 
    buffer = 0.0_r8
-   call infld(trim(fieldname), fh, dimname, 1, npsq, 1, nelemd, buffer,    &
-        found, gridname=ini_grid_name, fillvalue=fillvalue)
+   if (scm_read_iop_column(fh, dimname, fieldname)) then
+      ! SCAM on a model grid that differs from the IOP grid: read the IOP
+      ! column (SCM grid fills element 1) and give every point that column.
+      call infld(trim(fieldname), fh, dimname, 1, npsq, 1, nelemd, buffer, &
+           found, gridname='SCM', fillvalue=fillvalue)
+      if (found) then
+         do ie = 2, nelemd
+            buffer(:,ie) = buffer(:,1)
+         end do
+      end if
+   else
+      call infld(trim(fieldname), fh, dimname, 1, npsq, 1, nelemd, buffer, &
+           found, gridname=ini_grid_name, fillvalue=fillvalue)
+   end if
    if(.not. found) then
       call endrun('READ_DYN_FIELD_2D: Could not find '//trim(fieldname)//' field on input datafile')
    end if
@@ -2274,11 +2287,23 @@ subroutine read_dyn_field_3d(fieldname, fh, dimname, buffer)
    ! Local variables
    logical                  :: found
    real(r8)                 :: fillvalue
+   integer                  :: ie
    !----------------------------------------------------------------------------
 
    buffer = 0.0_r8
-   call infld(trim(fieldname), fh, dimname, 'lev',  1, npsq, 1, nlev,         &
-        1, nelemd, buffer, found, gridname=ini_grid_name, fillvalue=fillvalue)
+   if (scm_read_iop_column(fh, dimname, fieldname)) then
+      ! See read_dyn_field_2d.
+      call infld(trim(fieldname), fh, dimname, 'lev',  1, npsq, 1, nlev,      &
+           1, nelemd, buffer, found, gridname='SCM', fillvalue=fillvalue)
+      if (found) then
+         do ie = 2, nelemd
+            buffer(:,:,ie) = buffer(:,:,1)
+         end do
+      end if
+   else
+      call infld(trim(fieldname), fh, dimname, 'lev',  1, npsq, 1, nlev,      &
+           1, nelemd, buffer, found, gridname=ini_grid_name, fillvalue=fillvalue)
+   end if
    if(.not. found) then
       call endrun('READ_DYN_FIELD_3D: Could not find '//trim(fieldname)//' field on input datafile')
    end if
@@ -2301,6 +2326,52 @@ subroutine read_dyn_field_3d(fieldname, fh, dimname, buffer)
    end if
 
 end subroutine read_dyn_field_3d
+
+!========================================================================================
+
+logical function scm_read_iop_column(fh, dimname, fieldname)
+
+   ! In single-column mode, decide whether a dynamics input field must be read
+   ! at the IOP column through the SCM grid. That is the case when the SCAM
+   ! model grid differs from the IOP file's grid and the file being read is on
+   ! the IOP grid (e.g. ne30 ncdata/topo for an ne3 SCAM "container" grid).
+   ! When the grids are the same, the normal read is used, as before.
+
+   use scamMod, only: iop_ncol
+
+   type(file_desc_t), intent(inout) :: fh
+   character(len=*),  intent(in)    :: dimname
+   character(len=*),  intent(in)    :: fieldname
+
+   integer :: dims(2), model_ncol, file_ncol, dimid, ierr, err_handling
+   character(len=*), parameter :: sub = 'scm_read_iop_column'
+
+   scm_read_iop_column = .false.
+   if (.not. single_column) return
+
+   call cam_grid_dimensions(ini_grid_name, dims)
+   model_ncol = dims(1)
+   if (iop_ncol == model_ncol) return
+
+   call pio_seterrorhandling(fh, PIO_BCAST_ERROR, err_handling)
+   ierr = pio_inq_dimid(fh, trim(dimname), dimid)
+   if (ierr /= PIO_NOERR) then
+      call endrun(sub//': dimension '//trim(dimname)//' not found for '//trim(fieldname))
+   end if
+   ierr = pio_inq_dimlen(fh, dimid, file_ncol)
+   call pio_seterrorhandling(fh, err_handling)
+
+   if (file_ncol == iop_ncol) then
+      scm_read_iop_column = .true.
+   else if (file_ncol /= model_ncol) then
+      if (masterproc) then
+         write(iulog,*) sub, ': ', trim(fieldname), ' file columns = ', file_ncol, &
+              ', IOP grid columns = ', iop_ncol, ', model grid columns = ', model_ncol
+      end if
+      call endrun(sub//': '//trim(fieldname)//' is on neither the IOP grid nor the model grid')
+   end if
+
+end function scm_read_iop_column
 
 !========================================================================================
 
