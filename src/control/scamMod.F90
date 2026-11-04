@@ -413,20 +413,35 @@ subroutine scm_read_iop_geometry(ncid)
 !-----------------------------------------------------------------------
    integer, intent(in) :: ncid
 
-   integer  :: dimid, ierr, nlat, nlon, ntime, itime
+   integer  :: dimid, varid, ierr, nlat, nlon, ntime, itime, latdim, londim
+   integer  :: dimids(NF90_MAX_VAR_DIMS)
    real(r8) :: val(1)
    character(len=*), parameter :: sub = 'scm_read_iop_geometry'
 
    have_iop_geometry = .false.
-   if (nf90_inq_dimid(ncid, 'ncol', dimid) == NF90_NOERR) then
-      ierr = nf90_inquire_dimension(ncid, dimid, len=iop_ncol)
+
+   ! Horizontal size from the coordinate variables. On unstructured files lat
+   ! and lon share one column dimension (its name varies: ncol for physics
+   ! grid output, ncol_d for CAMIOP output on the GLL grid); lat-lon files
+   ! have separate lat and lon dimensions.
+   latdim = -1
+   londim = -1
+   if (nf90_inq_varid(ncid, 'lat', varid) == NF90_NOERR) then
+      ierr = nf90_inquire_variable(ncid, varid, dimids=dimids)
+      latdim = dimids(1)
+   end if
+   if (nf90_inq_varid(ncid, 'lon', varid) == NF90_NOERR) then
+      ierr = nf90_inquire_variable(ncid, varid, dimids=dimids)
+      londim = dimids(1)
+   end if
+   if (latdim < 0 .or. londim < 0) then
+      call endrun(sub//': IOP file has no lat/lon coordinate variables')
+   end if
+   ierr = nf90_inquire_dimension(ncid, latdim, len=nlat)
+   if (latdim == londim) then
+      iop_ncol = nlat
    else
-      nlat = 1
-      nlon = 1
-      if (nf90_inq_dimid(ncid, 'lat', dimid) == NF90_NOERR) &
-           ierr = nf90_inquire_dimension(ncid, dimid, len=nlat)
-      if (nf90_inq_dimid(ncid, 'lon', dimid) == NF90_NOERR) &
-           ierr = nf90_inquire_dimension(ncid, dimid, len=nlon)
+      ierr = nf90_inquire_dimension(ncid, londim, len=nlon)
       iop_ncol = nlat*nlon
       return    ! exact geometry is only written for unstructured (SE) grids
    end if
