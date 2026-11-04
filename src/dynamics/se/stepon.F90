@@ -265,7 +265,7 @@ subroutine stepon_run3(dtime, cam_out, phys_state, dyn_in, dyn_out)
    call t_startf('comp_adv_tends1')
    tl_f = TimeLevel%n0
    call TimeLevel_Qdp(TimeLevel, qsplit, tl_fQdp)
-   call compute_adv_tends_xyz(dyn_in%elem,dyn_in%fvm,1,nelemd,tl_fQdp,tl_f)
+   if (.not. single_column) call compute_adv_tends_xyz(dyn_in%elem,dyn_in%fvm,1,nelemd,tl_fQdp,tl_f)
    if (write_camiop) call compute_write_iop_fields(dyn_in%elem,dyn_in%fvm,1,nelemd,tl_fQdp,tl_f)
    call t_stopf('comp_adv_tends1')
 
@@ -277,7 +277,7 @@ subroutine stepon_run3(dtime, cam_out, phys_state, dyn_in, dyn_out)
    call t_startf('comp_adv_tends2')
    tl_f = TimeLevel%n0
    call TimeLevel_Qdp(TimeLevel, qsplit, tl_fQdp)
-   call compute_adv_tends_xyz(dyn_in%elem,dyn_in%fvm,1,nelemd,tl_fQdp,tl_f)
+   if (.not. single_column) call compute_adv_tends_xyz(dyn_in%elem,dyn_in%fvm,1,nelemd,tl_fQdp,tl_f)
    if (write_camiop) call compute_write_iop_fields(dyn_in%elem,dyn_in%fvm,1,nelemd,tl_fQdp,tl_f)
    call t_stopf('comp_adv_tends2')
 

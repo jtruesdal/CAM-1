@@ -155,10 +155,14 @@ subroutine cam_init(                                             &
    call read_namelist(filein, single_column, scmlat, scmlon)
 
    ! Open initial or restart file, and topo file if specified.
+   call t_startf('cam_init_files')
    call cam_initfiles_open()
+   call t_stopf('cam_init_files')
 
    ! Initialize grids and dynamics grid decomposition
+   call t_startf('cam_init_dyn_grid')
    call dyn_grid_init()
+   call t_stopf('cam_init_dyn_grid')
 
    ! Initialize physics grid decomposition
    call phys_grid_init()
@@ -167,7 +171,9 @@ subroutine cam_init(                                             &
    call phys_grid_ctem_reg()
 
    ! Register advected tracers and physics buffer fields
+   call t_startf('cam_init_phys_register')
    call phys_register ()
+   call t_stopf('cam_init_phys_register')
 
    ! Initialize ghg surface values before default initial distributions
    ! are set in dyn_init
@@ -179,7 +185,9 @@ subroutine cam_init(                                             &
 
    if (initial_run_in) then
 
+      call t_startf('cam_init_dyn_init')
       call dyn_init(dyn_in, dyn_out)
+      call t_stopf('cam_init_dyn_init')
 
       ! Allocate and setup surface exchange data
       call atm2hub_alloc(cam_out)
@@ -193,14 +201,20 @@ subroutine cam_init(                                             &
 
    if (write_camiop) call initialize_iop_history()
 
+   call t_startf('cam_init_phys_init')
    call phys_init( phys_state, phys_tend, pbuf2d, cam_in, cam_out )
+   call t_stopf('cam_init_phys_init')
 
+   call t_startf('cam_init_stepon_init')
    call stepon_init(dyn_in, dyn_out)
+   call t_stopf('cam_init_stepon_init')
 
    call offline_driver_init()
 
+   call t_startf('cam_init_history')
    if (single_column) call scm_intht()
    call intht(model_doi_url)
+   call t_stopf('cam_init_history')
 
    call cam_snapshot_deactivate()
 
