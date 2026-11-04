@@ -25,4 +25,3 @@ Nudge_Beg_Day  =1
 Nudge_End_Year =2008
 Nudge_End_Month=12
 Nudge_End_Day  =10
-fincl3 = 'Nudge_T','Nudge_Q','Target_T','Target_Q','PS','num_a1','num_a2','num_a3','num_a4'
