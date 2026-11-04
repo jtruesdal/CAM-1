@@ -2234,17 +2234,20 @@ subroutine read_dyn_field_2d(fieldname, fh, dimname, buffer)
    logical                  :: found
    real(r8)                 :: fillvalue
    integer                  :: ie
+   real(r8)                 :: colbuf2d(npsq,1)
    !----------------------------------------------------------------------------
 
    buffer = 0.0_r8
    if (scm_read_iop_column(fh, dimname, fieldname)) then
       ! SCAM on a model grid that differs from the IOP grid: read the IOP
       ! column (SCM grid fills element 1) and give every point that column.
-      call infld(trim(fieldname), fh, dimname, 1, npsq, 1, nelemd, buffer, &
+      ! The SCM grid map covers one block of npsq points, so read into a
+      ! one-element buffer.
+      call infld(trim(fieldname), fh, dimname, 1, npsq, 1, 1, colbuf2d, &
            found, gridname='SCM', fillvalue=fillvalue)
       if (found) then
-         do ie = 2, nelemd
-            buffer(:,ie) = buffer(:,1)
+         do ie = 1, nelemd
+            buffer(:,ie) = colbuf2d(:,1)
          end do
       end if
    else
@@ -2288,16 +2291,17 @@ subroutine read_dyn_field_3d(fieldname, fh, dimname, buffer)
    logical                  :: found
    real(r8)                 :: fillvalue
    integer                  :: ie
+   real(r8)                 :: colbuf3d(npsq,nlev,1)
    !----------------------------------------------------------------------------
 
    buffer = 0.0_r8
    if (scm_read_iop_column(fh, dimname, fieldname)) then
       ! See read_dyn_field_2d.
       call infld(trim(fieldname), fh, dimname, 'lev',  1, npsq, 1, nlev,      &
-           1, nelemd, buffer, found, gridname='SCM', fillvalue=fillvalue)
+           1, 1, colbuf3d, found, gridname='SCM', fillvalue=fillvalue)
       if (found) then
-         do ie = 2, nelemd
-            buffer(:,:,ie) = buffer(:,:,1)
+         do ie = 1, nelemd
+            buffer(:,:,ie) = colbuf3d(:,:,1)
          end do
       end if
    else
