@@ -134,7 +134,9 @@ subroutine stepon_run1( dtime_out, phys_state, phys_tend,               &
 
 
    if (use_iop .and. masterproc) then
+       call t_startf('scm_setiopupdate')
        call setiopupdate
+       call t_stopf('scm_setiopupdate')
    end if
 
    if (single_column) then
@@ -146,12 +148,16 @@ subroutine stepon_run1( dtime_out, phys_state, phys_tend,               &
      endif
 
      iop_update_phase1 = .true.
+     call t_startf('scm_readiopdata1')
      if ((is_first_restart_step() .or. doiopupdate) .and. masterproc) then
         call readiopdata( hvcoord%hyam, hvcoord%hybm, hvcoord%hyai, hvcoord%hybi, hvcoord%ps0  )
      endif
      call iop_broadcast()
+     call t_stopf('scm_readiopdata1')
 
+     call t_startf('scm_setfield1')
      call scm_setfield(dyn_out%elem,iop_update_phase1)
+     call t_stopf('scm_setfield1')
    endif
 
    call t_barrierf('sync_d_p_coupling', mpicom)
@@ -256,9 +262,13 @@ subroutine stepon_run3(dtime, cam_out, phys_state, dyn_in, dyn_out)
       ! Update IOP properties e.g. omega, divT, divQ
       iop_update_phase1 = .false.
       if (doiopupdate) then
+         call t_startf('scm_readiopdata2')
          if (masterproc) call readiopdata( hvcoord%hyam, hvcoord%hybm, hvcoord%hyai, hvcoord%hybi, hvcoord%ps0  )
          call iop_broadcast()
+         call t_stopf('scm_readiopdata2')
+         call t_startf('scm_setfield2')
          call scm_setfield(dyn_out%elem,iop_update_phase1)
+         call t_stopf('scm_setfield2')
       endif
    endif
 

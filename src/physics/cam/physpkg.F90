@@ -832,7 +832,9 @@ contains
     end if
 
     if (initial_run) then
+       call t_startf('pi_inidat')
        call phys_inidat(cam_out, pbuf2d)
+       call t_stopf('pi_inidat')
     end if
 
     ! wv_saturation is relatively independent of everything else and
@@ -840,6 +842,7 @@ contains
     call wv_sat_init
 
     ! solar irradiance data modules
+    call t_startf('pi_radiation')
     call solar_data_init()
 
     ! Initialize rad constituents and their properties
@@ -851,22 +854,28 @@ contains
     call radiation_init(pbuf2d)
 
     call aer_rad_props_init()
+    call t_stopf('pi_radiation')
 
     ! initialize carma
     call carma_init(pbuf2d)
 
     if (.not. offline_driver_dorun) then
 
+       call t_startf('pi_emissions')
        call surface_emissions_init(pbuf2d)
        call elevated_emissions_init(pbuf2d)
+       call t_stopf('pi_emissions')
 
        ! Prognostic chemistry.
+       call t_startf('pi_chem')
        call chem_init(phys_state,pbuf2d)
+       call t_stopf('pi_chem')
 
        ! Lightning flash frq and NOx prod
        call lightning_init( pbuf2d )
 
        ! Prescribed tracers
+       call t_startf('pi_prescribed')
        call prescribed_ozone_init()
        call prescribed_ghg_init()
        call prescribed_aero_init()
@@ -874,6 +883,7 @@ contains
        call aircraft_emit_init()
        call prescribed_volcaero_init()
        call prescribed_strataero_init()
+       call t_stopf('pi_prescribed')
     end if
 
     ! co2 cycle
@@ -887,7 +897,9 @@ contains
          iulog, errmsg, errflg)
     if (errflg /= 0) call endrun(errmsg)
 
+    call t_startf('pi_vdiff')
     call vertical_diffusion_init(pbuf2d)
+    call t_stopf('pi_vdiff')
 
     if ( waccmx_is('ionosphere') .or. waccmx_is('neutral') ) then
        call waccmx_phys_mspd_init ()
@@ -897,6 +909,7 @@ contains
        endif
     endif
 
+    call t_startf('pi_clouds')
     call cloud_diagnostics_init(pbuf2d)
 
     call radheat_init(pref_mid)
@@ -919,6 +932,7 @@ contains
 
     ! initiate CLUBB within CAM
     if (do_clubb_sgs) call clubb_ini_cam(pbuf2d)
+    call t_stopf('pi_clouds')
 
     call qbo_init
 
@@ -948,7 +962,9 @@ contains
 
     ! Initialize Nudging Parameters
     !--------------------------------
+    call t_startf('pi_nudging')
     if(Nudge_Model) call nudging_init
+    call t_stopf('pi_nudging')
 
     if (clim_modal_aero) then
 
