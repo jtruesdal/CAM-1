@@ -950,9 +950,12 @@ subroutine define_cam_grids()
       latval=closeioplat
       lonval=closeioplon
 
-      lat_coord => horiz_coord_create('lat', 'ncol', 1,  &
+      ! Use the initial file's column dimension name (ncol or ncol_d) so the
+      ! SCM grid can also read 3-D fields (lev) from that file: those reads
+      ! match the grid's dimension name against the field's dimension names.
+      lat_coord => horiz_coord_create('lat', trim(ini_grid_hdim_name), 1,  &
          'latitude', 'degrees_north', 1, 1, latval, map=pemap_scm)
-      lon_coord => horiz_coord_create('lon', 'ncol', 1,  &
+      lon_coord => horiz_coord_create('lon', trim(ini_grid_hdim_name), 1,  &
          'longitude', 'degrees_east', 1, 1, lonval, map=pemap_scm)
 
       call cam_grid_register('SCM', ini_decomp_scm, lat_coord, lon_coord,         &
