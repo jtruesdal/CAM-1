@@ -1566,7 +1566,11 @@ subroutine read_inidat(dyn_in)
    do m_cnst = 1, pcnst
       if (cnst_read_iv(m_cnst) .and. .not. cnst_is_a_water_species(cnst_name(m_cnst))) then
          if (dyn_field_exists(fh_ini, trim(cnst_name(m_cnst)), required=.false.)) then
-            call check_file_layout(fh_ini, elem, dyn_cols, 'ncdata', .true.)
+            ! As for the state fields above, SCAM reads one column and skips
+            ! the check that the file's grid matches the model grid.
+            if (.not. single_column) then
+               call check_file_layout(fh_ini, elem, dyn_cols, 'ncdata', .true.)
+            end if
             exit
          end if
       end if
