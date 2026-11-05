@@ -6651,6 +6651,14 @@ Use the SCAM-IOP 3d forcing if true, use combination of dycore vertical advectio
 Default:False
 </entry>
 
+<entry id="scm_iop_hgrid" type="char*32" category="scam"
+       group="scam_nl" valid_values="">
+Horizontal grid of the IOP file (e.g. ne30np4) when SCAM runs on a different
+model grid. Set by build-namelist from configure -scam_iop_hgrid; SCAM checks
+that the IOP file has the matching number of columns.
+Default: blank
+</entry>
+
 <entry id="scm_force_latlon" type="logical" category="scam"
        group="scam_nl" valid_values="">
 Force scam to use the lat lon fields specified in the scam namelist not what is closest to IOP avail lat lon

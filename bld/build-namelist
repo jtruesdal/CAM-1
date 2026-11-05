@@ -316,6 +316,26 @@ if ($print>=2) { print "Using namelist defaults file $nl_defaults_file$eol"; }
 
 my $defaults = Build::NamelistDefaults->new($nl_defaults_file, $cfg);
 
+# SCAM on a "container" grid (configure -scam_iop_hgrid): the column comes from an IOP file on
+# another grid, so namelist defaults (input datasets, tunings) are taken for that grid.  The se_*
+# dynamical core settings still describe the model grid; get_default_value takes those from
+# $dyn_defaults.  $phys_hgrid replaces direct hgrid checks that select physics/chemistry inputs.
+my $cfg_def = $cfg;          # configuration used to select defaults
+my $dyn_defaults;            # model-grid defaults for se_* settings (container grid only)
+my $phys_hgrid = $cfg->get('hgrid');
+my $scam_iop_hgrid = $cfg->is_valid_name('scam_iop_hgrid') ? $cfg->get('scam_iop_hgrid') : '';
+if ($cfg->get('scam') and $scam_iop_hgrid and $scam_iop_hgrid ne $cfg->get('hgrid')) {
+    $cfg_def = Build::Config->new($opts{'config'});
+    $cfg_def->set('hgrid', $scam_iop_hgrid);
+    $dyn_defaults = $defaults;
+    $defaults = Build::NamelistDefaults->new($nl_defaults_file, $cfg_def);
+    $phys_hgrid = $scam_iop_hgrid;
+    if ($print>=1) {
+        print "SCAM container grid: namelist defaults for IOP grid $scam_iop_hgrid," .
+              " se_* defaults for model grid " . $cfg->get('hgrid') . "$eol";
+    }
+}
+
 #-----------------------------------------------------------------------------------------------
 # Similarly to the namelist definition and defaults files, the use case file
 # may also come from the usr_src directories.  Determine the location of the
@@ -421,7 +441,7 @@ if (defined $use_case_file) {
 
     # The use case definition is contained in an xml file with the same format as the defaults file.
     # Create a new NamelistDefaults object.
-    $uc_defaults = Build::NamelistDefaults->new($use_case_file, $cfg);
+    $uc_defaults = Build::NamelistDefaults->new($use_case_file, $cfg_def);
 
     # Loop over the variables specified in the use case.
     # A defaults file may contain information for variables that are not namelist variables.
@@ -2484,7 +2504,7 @@ if ($phys =~ /cam6/ or $phys =~ /cam7/) {
             %species = (%species,
                     'MTERP_bb_srf_file' => 'MTERP' );
         }
-        if ($cfg->get('hgrid') =~ /ne0np4CONUS.ne30x8/) {
+        if ($phys_hgrid =~ /ne0np4CONUS.ne30x8/) {
             %species = (%species,
                     'BIGALD_bb_srf_file' => 'BIGALD',
                     'CH3COCHO_bb_srf_file' => 'CH3COCHO',
@@ -2593,7 +2613,7 @@ if ($phys =~ /cam6/ or $phys =~ /cam7/) {
     if ( (($nl->get_value('modal_strat_sulfate') =~ /$TRUE/io) or ($carma eq 'trop_strat'))
          and (defined $nl->get_value('ext_frc_type')) ) {
       if ( $nl->get_value('ext_frc_type') !~ /CYCLICAL/ ) {
-        my $hgrid = $cfg->get('hgrid');
+        my $hgrid = $phys_hgrid;
         if ($hgrid =~ /1.9x2.5/) {
           %species = (%species, 'so2_volc_2deg_ext_file' => 'SO2' );
         } else {
@@ -3439,7 +3459,7 @@ if ($cfg->get('microphys') =~ /^mg/) {
 
     # tunings for micro_mg_dcs
     my $microphys = $cfg->get('microphys');
-    my $hgrid = $cfg->get('hgrid');
+    my $hgrid = $phys_hgrid;
     my $silhs = $cfg->get('silhs');
 
     my $micro_mg_dcs = '400.D-6';        # default for cam5/mg1
@@ -4333,6 +4353,7 @@ if ($cfg->get('scam')) {
     add_default($nl, 'scm_use_obs_uv');
     add_default($nl, 'scale_dry_air_mass');
     add_default($nl, 'scm_relaxation');
+    if ($scam_iop_hgrid) { add_default($nl, 'scm_iop_hgrid', 'val'=>"'$scam_iop_hgrid'"); }
     add_default($nl, 'scm_relax_bot_p');
     add_default($nl, 'scm_relax_top_p');
     add_default($nl, 'scm_relax_linear');
@@ -4932,6 +4953,11 @@ sub get_default_value {
 
     my $var_name    = lc(shift);   # name of namelist variable (case insensitive interface)
     my $usr_att_ref = shift;       # reference to hash containing user supplied attributes
+
+    # SCAM container grid: dynamical core (se_*) settings describe the model grid
+    if (defined $dyn_defaults and $var_name =~ /^se_/) {
+        return $dyn_defaults->get_value($var_name, $usr_att_ref);
+    }
 
     # Check first in the use case defaults
     if (defined $uc_defaults) {

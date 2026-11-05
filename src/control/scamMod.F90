@@ -226,6 +226,7 @@ logical, public ::  scm_crm_mode           = .false. ! Use column radiation mode
 logical, public ::  scm_cambfb_mode        = .false. ! Use extra CAM IOP fields to assure bit for bit match with CAM run
 logical, public ::  scm_use_obs_T          = .false. ! Use the SCAM-IOP observed T at each timestep instead of forecasting.
 logical, public ::  scm_force_latlon       = .false. ! force scam to use the lat lon fields specified in the namelist not closest
+character(len=32), public :: scm_iop_hgrid = ' ' ! grid of the IOP file (e.g. ne30np4) for a container model grid
 real(r8), public              ::  scm_relaxation_low      ! lowest level to apply relaxation
 real(r8), public              ::  scm_relaxation_high     ! highest level to apply relaxation
 real(r8), public              ::  scm_relax_top_p         = 0._r8       ! upper bound for scm relaxation
@@ -288,7 +289,7 @@ subroutine scam_readnl(nlfile,single_column_in,scmlat_in,scmlon_in)
        scm_use_obs_T, scm_use_obs_uv, scm_use_obs_qv, scm_use_3dfrc, &
        scm_relax_linear, scm_relax_tau_top_sec, &
        scm_relax_tau_bot_sec, scm_force_latlon, scm_relax_fincl, &
-       scm_backfill_iop_w_init
+       scm_backfill_iop_w_init, scm_iop_hgrid
 
   single_column=single_column_in
 
@@ -440,6 +441,7 @@ subroutine scm_read_iop_geometry(ncid)
    ierr = nf90_inquire_dimension(ncid, latdim, len=nlat)
    if (latdim == londim) then
       iop_ncol = nlat
+      call scm_check_iop_hgrid()
    else
       ierr = nf90_inquire_dimension(ncid, londim, len=nlon)
       iop_ncol = nlat*nlon
@@ -478,6 +480,26 @@ subroutine scm_read_iop_geometry(ncid)
    end if
 
 contains
+
+   subroutine scm_check_iop_hgrid()
+      ! If the IOP grid was given (scm_iop_hgrid, e.g. ne30np4), check that the IOP file
+      ! has its number of GLL columns, 6*ne**2*(np-1)**2 + 2.
+      integer :: ne, np, ios, expect
+      character(len=32) :: g
+      g = adjustl(scm_iop_hgrid)
+      if (len_trim(g) == 0) return
+      if (g(1:2) /= 'ne' .or. index(g, 'np') == 0) &
+           call endrun(sub//': cannot parse scm_iop_hgrid = '//trim(g))
+      read(g(3:index(g,'np')-1), *, iostat=ios) ne
+      if (ios == 0) read(g(index(g,'np')+2:), *, iostat=ios) np
+      if (ios /= 0) call endrun(sub//': cannot parse scm_iop_hgrid = '//trim(g))
+      expect = 6*ne*ne*(np-1)*(np-1) + 2
+      if (iop_ncol /= expect) then
+         if (masterproc) write(iulog,*) sub//': IOP file columns = ', iop_ncol, &
+              ' but scm_iop_hgrid = '//trim(g)//' has ', expect
+         call endrun(sub//': IOP file does not match scm_iop_hgrid ('//trim(g)//')')
+      end if
+   end subroutine scm_check_iop_hgrid
 
    logical function iop_get_col(ncid, name, itime, x)
       ! Value of a (time, ncol) or (ncol) variable at the selected column.

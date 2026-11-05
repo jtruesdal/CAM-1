@@ -122,6 +122,10 @@ OPTIONS
                         [ arm95 | arm97 | atex | bomex | cgilsS11 | cgilsS12 | cgilsS6 | dycomsRF01 |
                           dycomsRF02 | gateIII | mpace | rico | sparticus | togaII | twp06 | SAS | camfrc ].
                         Default: arm97
+     -scam_iop_hgrid <grid>
+                        With -scam: horizontal grid of the IOP file (e.g. ne30np4) when
+                        SCAM runs on a different model grid. Namelist defaults are taken
+                        for this grid, se_* dynamical core settings for the model grid.
 
   CAM parallelization:
 
@@ -294,6 +298,7 @@ GetOptions(
     "rad=s"                     => \$opts{'rad'},
     "offline_drv=s"             => \$opts{'offline_drv'},
     "scam=s"                    => \$opts{'scam'},
+    "scam_iop_hgrid=s"          => \$opts{'scam_iop_hgrid'},
     "silhs"                     => \$opts{'silhs'},
     "s|silent"                  => \$opts{'silent'},
     "smp!"                      => \$opts{'smp'},
@@ -1087,6 +1092,19 @@ EOF
 }
 
 if ($print>=2) { print "CAM single column mode (SCAM): $scam$eol"; }
+
+# SCAM on a "container" grid: the IOP file's horizontal grid
+if (defined $opts{'scam_iop_hgrid'}) {
+    if ($scam ne 'ON') {
+        die "**  ERROR: -scam_iop_hgrid is only valid together with -scam\n";
+    }
+    my $iop_hgrid = $opts{'scam_iop_hgrid'};
+    if ($iop_hgrid !~ m/^ne\d+np4$/) {
+        die "**  ERROR: -scam_iop_hgrid must be an SE GLL grid name like ne30np4; got $iop_hgrid\n";
+    }
+    $cfg_ref->set('scam_iop_hgrid', $iop_hgrid);
+    if ($print>=2) { print "SCAM IOP file horizontal grid: $iop_hgrid$eol"; }
+}
 
 #-----------------------------------------------------------------------------------------------
 # Generate IOP
