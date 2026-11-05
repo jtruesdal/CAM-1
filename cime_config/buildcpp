@@ -22,6 +22,37 @@ from CIME.buildnml import parse_input
 
 logger = logging.getLogger(__name__)
 
+# SCAM "container" grids: the small grid each dynamical core runs on when a
+# single-column case is created at a 3-D model resolution (see _scam_container).
+SCAM_CONTAINER_HGRID = {"se": "ne3np4"}
+
+###############################################################################
+def _scam_container(atm_grid, cam_dycore, user_opts):
+###############################################################################
+    """
+    SCAM as a single column of a 3-D model: a single-column (-scam) case is created
+    at the resolution of its IOP file (e.g. ne30_ne30_mg17), so CIME's meshes, domain
+    files and the other components are those of that grid.  Until a dynamical core
+    can run a single column directly, CAM runs its dynamics on the small container
+    grid in SCAM_CONTAINER_HGRID and takes its namelist defaults for the IOP grid
+    (configure -scam_iop_hgrid).  -scam_full_grid in CAM_CONFIG_OPTS turns this off,
+    and an explicit -scam_iop_hgrid in CAM_CONFIG_OPTS is left as given.
+
+    Returns (hgrid for configure, extra configure options, user options).
+    """
+    full_grid = "-scam_full_grid" in user_opts
+    user_opts = [opt for opt in user_opts if opt != "-scam_full_grid"]
+    container = SCAM_CONTAINER_HGRID.get(cam_dycore)
+    if ("-scam" not in user_opts or "-scam_iop_hgrid" in user_opts or full_grid
+            or container is None or atm_grid == container):
+        return atm_grid, [], user_opts
+    if cam_dycore == "se" and not re.match(r"ne\d+np4$", atm_grid):
+        # SCAM supports SE only with physics on the GLL points (np4), not pgN
+        return atm_grid, [], user_opts
+    logger.info("SCAM: single column of %s on the %s %s container grid",
+                atm_grid, cam_dycore, container)
+    return container, ["-scam_iop_hgrid", atm_grid], user_opts
+
 ###############################################################################
 def buildcpp(case):
 ###############################################################################
@@ -46,6 +77,10 @@ def buildcpp(case):
     if match:
         atm_grid = match.groups()[0]
         nlev = match.groups()[1]
+
+    # SCAM on a container grid (single column of the 3-D model at atm_grid)
+    atm_grid, scam_opts, user_opts = _scam_container(atm_grid, cam_dycore,
+                                                     cam_config_opts.split(" "))
 
     # Need to relax this error tolerance for the SE variable resolution grids
     if atm_grid[0:3] == 'ne0':
@@ -85,7 +120,7 @@ def buildcpp(case):
              pass
 
     # Add user options.
-    config_opts += cam_config_opts.split(" ")
+    config_opts += user_opts + scam_opts
 
     if "-cosp" in config_opts:
         config_opts += ["-cosp_libdir", os.path.join(exeroot, "atm", "obj", "cosp")]
