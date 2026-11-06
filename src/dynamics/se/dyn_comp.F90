@@ -2243,7 +2243,7 @@ subroutine read_dyn_field_2d(fieldname, fh, dimname, buffer)
 
    buffer = 0.0_r8
    if (scm_read_iop_column(fh, dimname, fieldname)) then
-      ! SCAM on a model grid that differs from the IOP grid: read the IOP
+      ! SCAM on a model grid that differs from the forcing grid: read the forcing-grid
       ! column (SCM grid fills element 1) and give every point that column.
       ! The SCM grid map covers one block of npsq points, so read into a
       ! one-element buffer.
@@ -2340,12 +2340,13 @@ end subroutine read_dyn_field_3d
 logical function scm_read_iop_column(fh, dimname, fieldname)
 
    ! In single-column mode, decide whether a dynamics input field must be read
-   ! at the IOP column through the SCM grid. That is the case when the SCAM
-   ! model grid differs from the IOP file's grid and the file being read is on
-   ! the IOP grid (e.g. ne30 ncdata/topo for an ne3 SCAM "container" grid).
+   ! at the forcing-grid column through the SCM grid. That is the case when the
+   ! SCAM model grid differs from the forcing grid (the grid the case was created
+   ! at) and the file being read is on the forcing grid (e.g. ne30 ncdata/topo for
+   ! an ne3 SCAM "container" grid).
    ! When the grids are the same, the normal read is used, as before.
 
-   use scamMod, only: iop_ncol
+   use scamMod, only: forcing_ncol
 
    type(file_desc_t), intent(inout) :: fh
    character(len=*),  intent(in)    :: dimname
@@ -2359,7 +2360,7 @@ logical function scm_read_iop_column(fh, dimname, fieldname)
 
    call cam_grid_dimensions(ini_grid_name, dims)
    model_ncol = dims(1)
-   if (iop_ncol == model_ncol) return
+   if (forcing_ncol == model_ncol) return
 
    call pio_seterrorhandling(fh, PIO_BCAST_ERROR, err_handling)
    ierr = pio_inq_dimid(fh, trim(dimname), dimid)
@@ -2369,14 +2370,14 @@ logical function scm_read_iop_column(fh, dimname, fieldname)
    ierr = pio_inq_dimlen(fh, dimid, file_ncol)
    call pio_seterrorhandling(fh, err_handling)
 
-   if (file_ncol == iop_ncol) then
+   if (file_ncol == forcing_ncol) then
       scm_read_iop_column = .true.
    else if (file_ncol /= model_ncol) then
       if (masterproc) then
          write(iulog,*) sub, ': ', trim(fieldname), ' file columns = ', file_ncol, &
-              ', IOP grid columns = ', iop_ncol, ', model grid columns = ', model_ncol
+              ', forcing grid columns = ', forcing_ncol, ', model grid columns = ', model_ncol
       end if
-      call endrun(sub//': '//trim(fieldname)//' is on neither the IOP grid nor the model grid')
+      call endrun(sub//': '//trim(fieldname)//' is on neither the forcing grid nor the model grid')
    end if
 
 end function scm_read_iop_column

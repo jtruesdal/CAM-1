@@ -46,6 +46,7 @@ public :: setiopupdate        ! find index in iopboundary data for current time
 public :: plevs0              ! Define the pressures of the interfaces and midpoints
 public :: scmiop_flbc_inti
 public :: setiopupdate_init
+public :: scm_set_forcing_column ! find the forcing-grid column (after the namelists are read)
 
 ! PUBLIC MODULE DATA:
 
@@ -58,14 +59,26 @@ integer,  public ::  closeioplatidx   ! file array index of closest iop latitude
 integer,  public ::  closeioplonidx   ! file array index closest iop longitude for scam
 integer,  public ::  closelatidx   ! file array index of closest iop latitude for scam
 integer,  public ::  closelonidx   ! file array index closest iop longitude for scam
-integer,  public ::  iop_ncol = -1          ! number of horizontal columns in the IOP file
+integer,  public ::  iop_ncol = -1          ! number of horizontal columns in the IOP file (information only)
 integer,  public ::  scm_model_ncol = -1    ! number of horizontal columns in the SCAM model grid
+! Forcing grid: the grid the SCAM case was created at (--res; scm_iop_hgrid on a container
+! model grid, otherwise the model grid).  Its input files (ncdata, bnd_topo, nudging, ...)
+! are read at the forcing-grid column nearest the requested scmlat/scmlon.
+integer,  public ::  forcing_ncol = -1      ! number of horizontal columns of the forcing grid
+integer,  public ::  forcing_lonidx = -1    ! forcing-grid column (unstructured) or longitude index
+integer,  public ::  forcing_latidx = -1    ! forcing-grid column (unstructured) or latitude index
+real(r8), public ::  forcing_lat_deg, forcing_lon_deg ! coordinates of the forcing-grid column
+real(r8), public ::  forcing_area = -1._r8  ! area of the forcing-grid column if known (else < 0)
+real(r8)         ::  scm_req_lat, scm_req_lon ! requested column, before snapping to the IOP file
 logical,  public ::  have_iop_geometry = .false. ! IOP file supplies the exact column geometry
 real(r8), public ::  iop_lat_rad, iop_lon_rad   ! exact column coordinates (radians) from the IOP file
 real(r8), public ::  iop_area                   ! exact column area from the IOP file
 
 
 integer, parameter :: num_switches = 20
+! cache for get_start_count: IOP column indices for the current file and position
+integer,  save :: gsc_ncid = -1, gsc_latidx = -1, gsc_lonidx = -1
+real(r8), save :: gsc_lat = -999._r8, gsc_lon = -999._r8
 integer, parameter :: max_path_len = 256
 
 logical, public ::  single_column         ! Using IOP file or not
@@ -344,6 +357,8 @@ subroutine scam_readnl(nlfile,single_column_in,scmlat_in,scmlon_in)
         use_camiop = .false.
      endif
 
+     scm_req_lat = scmlat
+     scm_req_lon = scmlon
      ! If we are not forcing the lat and lon from the namelist use the closest lat and lon that is found in the IOP file.
      if (.not.scm_force_latlon) then
         call shr_scam_GetCloseLatLon( ncid, scmlat, scmlon, closeioplat, closeioplon, closeioplatidx, closeioplonidx )
@@ -441,7 +456,7 @@ subroutine scm_read_iop_geometry(ncid)
    ierr = nf90_inquire_dimension(ncid, latdim, len=nlat)
    if (latdim == londim) then
       iop_ncol = nlat
-      call scm_check_iop_hgrid()
+      call scm_check_iop_metadata()
    else
       ierr = nf90_inquire_dimension(ncid, londim, len=nlon)
       iop_ncol = nlat*nlon
@@ -475,31 +490,27 @@ subroutine scm_read_iop_geometry(ncid)
               iop_lat_rad, iop_lon_rad, iop_area
       else
          write(iulog,*) sub//': IOP file has no column geometry (scm_clat/scm_clon/scm_area);'
-         write(iulog,*) sub//': physics uses the SCAM model grid column geometry'
+         write(iulog,*) sub//': physics uses the forcing-grid column geometry'
       end if
    end if
 
 contains
 
-   subroutine scm_check_iop_hgrid()
-      ! If the IOP grid was given (scm_iop_hgrid, e.g. ne30np4), check that the IOP file
-      ! has its number of GLL columns, 6*ne**2*(np-1)**2 + 2.
-      integer :: ne, np, ios, expect
-      character(len=32) :: g
-      g = adjustl(scm_iop_hgrid)
-      if (len_trim(g) == 0) return
-      if (g(1:2) /= 'ne' .or. index(g, 'np') == 0) &
-           call endrun(sub//': cannot parse scm_iop_hgrid = '//trim(g))
-      read(g(3:index(g,'np')-1), *, iostat=ios) ne
-      if (ios == 0) read(g(index(g,'np')+2:), *, iostat=ios) np
-      if (ios /= 0) call endrun(sub//': cannot parse scm_iop_hgrid = '//trim(g))
-      expect = 6*ne*ne*(np-1)*(np-1) + 2
-      if (iop_ncol /= expect) then
-         if (masterproc) write(iulog,*) sub//': IOP file columns = ', iop_ncol, &
-              ' but scm_iop_hgrid = '//trim(g)//' has ', expect
-         call endrun(sub//': IOP file does not match scm_iop_hgrid ('//trim(g)//')')
+   subroutine scm_check_iop_metadata()
+      ! A CAMIOP file's forcing depends on the resolution of the run that wrote it.
+      ! CAM history files carry that run's ne and np as global attributes: warn if
+      ! they differ from the forcing grid of this case.  Other IOP files have none.
+      integer :: ne_att, np_att, ne, np
+      if (nf90_get_att(ncid, NF90_GLOBAL, 'ne', ne_att) /= NF90_NOERR) return
+      if (nf90_get_att(ncid, NF90_GLOBAL, 'np', np_att) /= NF90_NOERR) return
+      if (masterproc) write(iulog,*) sub//': IOP file written by a run at ne, np = ', ne_att, np_att
+      if (.not. parse_ne_np(scm_iop_hgrid, ne, np)) return
+      if ((ne /= ne_att .or. np /= np_att) .and. masterproc) then
+         write(iulog,*) sub//': WARNING: IOP file resolution ne', ne_att, 'np', np_att, &
+              ' differs from the forcing grid '//trim(scm_iop_hgrid)//'; the forcing and the case''s'
+         write(iulog,*) sub//': WARNING: input data come from different resolutions'
       end if
-   end subroutine scm_check_iop_hgrid
+   end subroutine scm_check_iop_metadata
 
    logical function iop_get_col(ncid, name, itime, x)
       ! Value of a (time, ncol) or (ncol) variable at the selected column.
@@ -1542,7 +1553,15 @@ subroutine get_start_count (ncid    ,varid  ,scmlat, scmlon, timeidx, start    ,
   integer            :: latidx,lonidx,status,i
 !-----------------------------------------------------------------------
 
-   call shr_scam_GetCloseLatLon(ncid,scmlat,scmlon,closelat,closelon,latidx,lonidx)
+   ! The column is found once per open IOP file and position, not for every field.
+   if (ncid /= gsc_ncid .or. scmlat /= gsc_lat .or. scmlon /= gsc_lon) then
+      call shr_scam_GetCloseLatLon(ncid,scmlat,scmlon,closelat,closelon,gsc_latidx,gsc_lonidx)
+      gsc_ncid = ncid
+      gsc_lat  = scmlat
+      gsc_lon  = scmlon
+   end if
+   latidx = gsc_latidx
+   lonidx = gsc_lonidx
 
    STATUS = NF90_INQUIRE_VARIABLE( NCID, varID, ndims=var_ndims )
 !
@@ -1724,5 +1743,189 @@ subroutine setiopupdate_init
     doiopupdate = .true.
 
 end subroutine setiopupdate_init
+
+
+logical function parse_ne_np(hgrid, ne, np)
+!-----------------------------------------------------------------------
+! Parse an SE GLL grid name like ne30np4.  False if hgrid is blank or not of that form.
+!-----------------------------------------------------------------------
+   character(len=*), intent(in)  :: hgrid
+   integer,          intent(out) :: ne, np
+   character(len=32) :: g
+   integer :: ios, k
+   parse_ne_np = .false.
+   ne = -1
+   np = -1
+   g = adjustl(hgrid)
+   k = index(g, 'np')
+   if (len_trim(g) == 0 .or. g(1:2) /= 'ne' .or. k < 4) return
+   read(g(3:k-1), *, iostat=ios) ne
+   if (ios /= 0) return
+   read(g(k+2:), *, iostat=ios) np
+   if (ios /= 0) return
+   parse_ne_np = .true.
+end function parse_ne_np
+
+real(r8) function great_circle_deg(lat1, lon1, lat2, lon2)
+!-----------------------------------------------------------------------
+! Great-circle distance in degrees between two points given in degrees.
+!-----------------------------------------------------------------------
+   use shr_const_mod, only: pi => shr_const_pi
+   real(r8), intent(in) :: lat1, lon1, lat2, lon2
+   real(r8) :: d2r, a
+   d2r = pi/180._r8
+   a = sin(0.5_r8*d2r*(lat2-lat1))**2 + &
+       cos(d2r*lat1)*cos(d2r*lat2)*sin(0.5_r8*d2r*(lon2-lon1))**2
+   great_circle_deg = 2._r8*asin(min(1._r8, sqrt(a)))/d2r
+end function great_circle_deg
+
+subroutine scm_set_forcing_column(ncdata, bnd_topo)
+!-----------------------------------------------------------------------
+! Find the forcing-grid column nearest the requested point.  The forcing grid is
+! the grid the case was created at: its initial file (ncdata), or failing that its
+! topography file (bnd_topo), provides the coordinates.  With scm_iop_hgrid set
+! (container model grid) the file must have that grid's number of columns.
+! This is independent of the IOP file, which may hold one column, a set of columns
+! or a whole grid, or be an observed IOP with no grid at all.
+!-----------------------------------------------------------------------
+   use ioFileMod,     only: getfil
+
+   character(len=*), intent(in) :: ncdata, bnd_topo   ! initial and topography files (cam_initfiles)
+
+   real(r8) :: lat_req, lon_req   ! search point: the IOP column (scmlat/scmlon after scam_readnl)
+
+   character(len=*), parameter :: sub = 'scm_set_forcing_column'
+   character(len=cl) :: fname, path
+   integer  :: ne, np, expect, ifile, fid, ierr
+   logical  :: found
+   real(r8) :: d_iop, d_frc, d_both
+
+   ! Search near the IOP column chosen in scam_readnl (scmlat/scmlon, the requested point
+   ! when scm_force_latlon), so the forcing-grid column is the one nearest the forcing.
+   lat_req = scmlat
+   lon_req = scmlon
+   expect = -1
+   if (parse_ne_np(scm_iop_hgrid, ne, np)) expect = 6*ne*ne*(np-1)*(np-1) + 2
+
+   found = .false.
+   do ifile = 1, 2
+      if (ifile == 1) fname = ncdata
+      if (ifile == 2) fname = bnd_topo
+      if (len_trim(fname) == 0 .or. trim(fname) == 'ncdata' .or. trim(fname) == 'bnd_topo') cycle
+      call getfil(fname, path)
+      if (nf90_open(trim(path), NF90_NOWRITE, fid) /= NF90_NOERR) cycle
+      call find_nearest(fid, found)
+      ierr = nf90_close(fid)
+      if (found) exit
+   end do
+   if (.not. found) then
+      if (expect > 0) then
+         write(iulog,*) sub//': no lat/lon with ', expect, ' columns (', trim(scm_iop_hgrid), &
+              ') in ncdata or bnd_topo'
+      end if
+      call endrun(sub//': cannot find the forcing-grid column (coordinates from ncdata or bnd_topo)')
+   end if
+
+   if (masterproc) then
+      if (scm_force_latlon) then      ! the IOP column was not searched for
+         closeioplat = scmlat
+         closeioplon = scmlon
+      end if
+      d_frc  = great_circle_deg(scm_req_lat, scm_req_lon, forcing_lat_deg, forcing_lon_deg)
+      d_iop  = great_circle_deg(scm_req_lat, scm_req_lon, closeioplat, closeioplon)
+      d_both = great_circle_deg(closeioplat, closeioplon, forcing_lat_deg, forcing_lon_deg)
+      write(iulog,*) sub//': requested column lat, lon            = ', scm_req_lat, scm_req_lon
+      write(iulog,*) sub//': IOP column          lat, lon, dist(deg) = ', closeioplat, closeioplon, d_iop
+      write(iulog,*) sub//': forcing-grid column lat, lon, dist(deg) = ', &
+           forcing_lat_deg, forcing_lon_deg, d_frc
+      write(iulog,*) sub//': forcing grid columns, column index = ', forcing_ncol, forcing_lonidx, &
+           ' (', trim(fname), ')'
+      write(iulog,*) sub//': distance IOP column to forcing-grid column (deg) = ', d_both
+      if (scm_cambfb_mode .and. d_both > 1.e-6_r8) then
+         write(iulog,*) sub//': WARNING: in BFB mode the IOP column is not a forcing-grid column;'
+         write(iulog,*) sub//': WARNING: the run cannot reproduce the column of the run that wrote the IOP file'
+      end if
+   end if
+
+contains
+
+   subroutine find_nearest(fid, found)
+      integer, intent(in)  :: fid
+      logical, intent(out) :: found
+      character(len=8), parameter :: latnames(2) = (/ 'lat     ', 'lat_d   ' /)
+      character(len=8), parameter :: lonnames(2) = (/ 'lon     ', 'lon_d   ' /)
+      integer :: k, latid, lonid, nd, latdim, londim, nlat, nlon, i, ilat, ilon, areaid
+      integer :: dimids(NF90_MAX_VAR_DIMS)
+      real(r8), allocatable :: lat(:), lon(:)
+      real(r8) :: d, dmin, aval(1)
+
+      found = .false.
+      do k = 1, 2
+         if (nf90_inq_varid(fid, trim(latnames(k)), latid) /= NF90_NOERR) cycle
+         if (nf90_inq_varid(fid, trim(lonnames(k)), lonid) /= NF90_NOERR) cycle
+         ierr = nf90_inquire_variable(fid, latid, ndims=nd, dimids=dimids)
+         if (nd /= 1) cycle
+         latdim = dimids(1)
+         ierr = nf90_inquire_variable(fid, lonid, ndims=nd, dimids=dimids)
+         if (nd /= 1) cycle
+         londim = dimids(1)
+         ierr = nf90_inquire_dimension(fid, latdim, len=nlat)
+         ierr = nf90_inquire_dimension(fid, londim, len=nlon)
+         allocate(lat(nlat), lon(nlon))
+         ierr = nf90_get_var(fid, latid, lat)
+         ierr = nf90_get_var(fid, lonid, lon)
+         if (latdim == londim) then
+            ! unstructured grid: one column dimension
+            if (expect > 0 .and. nlat /= expect) then
+               deallocate(lat, lon)
+               cycle
+            end if
+            dmin = huge(1._r8)
+            do i = 1, nlat
+               d = great_circle_deg(lat_req, lon_req, lat(i), lon(i))
+               if (d < dmin) then
+                  dmin = d
+                  forcing_lonidx = i
+               end if
+            end do
+            forcing_latidx = forcing_lonidx
+            forcing_ncol = nlat
+            forcing_lat_deg = lat(forcing_lonidx)
+            forcing_lon_deg = lon(forcing_lonidx)
+            if (nf90_inq_varid(fid, 'area', areaid) == NF90_NOERR) then
+               ierr = nf90_inquire_variable(fid, areaid, ndims=nd, dimids=dimids)
+               if (nd == 1 .and. dimids(1) == latdim) then
+                  ierr = nf90_get_var(fid, areaid, aval, start=(/forcing_lonidx/), count=(/1/))
+                  if (ierr == NF90_NOERR) forcing_area = aval(1)
+               end if
+            end if
+         else
+            ! lat-lon grid: nearest latitude and nearest longitude
+            if (expect > 0) then
+               deallocate(lat, lon)
+               cycle
+            end if
+            ilat = minloc(abs(lat - lat_req), 1)
+            dmin = huge(1._r8)
+            do i = 1, nlon
+               d = great_circle_deg(lat(ilat), lon_req, lat(ilat), lon(i))
+               if (d < dmin) then
+                  dmin = d
+                  ilon = i
+               end if
+            end do
+            forcing_latidx = ilat
+            forcing_lonidx = ilon
+            forcing_ncol = nlat*nlon
+            forcing_lat_deg = lat(ilat)
+            forcing_lon_deg = lon(ilon)
+         end if
+         deallocate(lat, lon)
+         found = .true.
+         return
+      end do
+   end subroutine find_nearest
+
+end subroutine scm_set_forcing_column
 
 end module scamMod

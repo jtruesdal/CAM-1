@@ -764,7 +764,7 @@ subroutine define_cam_grids()
    use cam_grid_support, only: cam_grid_register, cam_grid_attribute_register
    use dimensions_mod,   only: nc
    use shr_const_mod,    only: PI => SHR_CONST_PI
-   use scamMod,          only: closeioplon,closeioplat,closeioplonidx,single_column
+   use scamMod,          only: forcing_lat_deg,forcing_lon_deg,forcing_lonidx,single_column
    ! Local variables
    integer                      :: i, ii, j, k, ie, mapind
    character(len=8)             :: latname, lonname, ncolname, areaname
@@ -934,7 +934,7 @@ subroutine define_cam_grids()
    if ( single_column) then
       allocate(pemap_scm(1))
       pemap_scm = 0_iMap
-      pemap_scm = closeioplonidx
+      pemap_scm = forcing_lonidx   ! the forcing-grid column (see scamMod)
 
       ! Map for scm grid
       allocate(grid_map_scm(3,npsq))
@@ -947,8 +947,8 @@ subroutine define_cam_grids()
          grid_map_scm(3, mapind) = pemap_scm(1)
          mapind = mapind + 1
       end do
-      latval=closeioplat
-      lonval=closeioplon
+      latval=forcing_lat_deg
+      lonval=forcing_lon_deg
 
       ! Use the initial file's column dimension name (ncol or ncol_d) so the
       ! SCM grid can also read 3-D fields (lev) from that file: those reads

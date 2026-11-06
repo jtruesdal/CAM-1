@@ -189,9 +189,11 @@ CONTAINS
       use cam_grid_support, only: horiz_coord_t, horiz_coord_create
       use cam_grid_support, only: cam_grid_attribute_copy, cam_grid_attr_exists
       use shr_const_mod,    only: PI => SHR_CONST_PI
-      use scamMod,          only: scmlon,scmlat,single_column,closeioplatidx,closeioplonidx
+      use scamMod,          only: scmlon,scmlat,single_column
       use scamMod,          only: closelatidx,closelonidx
-      use scamMod,          only: scm_model_ncol, iop_ncol, have_iop_geometry
+      use scamMod,          only: scm_model_ncol, have_iop_geometry
+      use scamMod,          only: forcing_ncol, forcing_lonidx, forcing_latidx
+      use scamMod,          only: forcing_lat_deg, forcing_lon_deg, forcing_area
       use scamMod,          only: iop_lat_rad, iop_lon_rad, iop_area
 
       ! Local variables
@@ -275,12 +277,7 @@ CONTAINS
          scm_model_ncol = hdim1_d * hdim2_d
          if (masterproc) then
             write(iulog,*) subname//'SCAM model grid columns = ', scm_model_ncol, &
-                 ', IOP file columns = ', iop_ncol
-            if (scm_model_ncol /= iop_ncol .and. .not. have_iop_geometry) then
-               write(iulog,*) subname//'WARNING: model and IOP grids differ and the IOP'
-               write(iulog,*) subname//'file has no column geometry; results will not'
-               write(iulog,*) subname//'reproduce the run that wrote the IOP file'
-            end if
+                 ', forcing grid columns = ', forcing_ncol
          end if
          hdim1_d = 1
          hdim2_d = 1
@@ -342,6 +339,17 @@ CONTAINS
                   phys_columns(col_index)%lon_deg = iop_lon_rad * (180.0_r8 / PI)
                   phys_columns(col_index)%area    = iop_area
                   phys_columns(col_index)%weight  = iop_area
+               else if (forcing_ncol /= scm_model_ncol) then
+                  ! Container model grid and no exact geometry in the IOP file
+                  ! (e.g. an observed IOP): use the forcing-grid column.
+                  phys_columns(col_index)%lat_deg = forcing_lat_deg
+                  phys_columns(col_index)%lon_deg = forcing_lon_deg
+                  phys_columns(col_index)%lat_rad = forcing_lat_deg * (PI / 180.0_r8)
+                  phys_columns(col_index)%lon_rad = forcing_lon_deg * (PI / 180.0_r8)
+                  if (forcing_area > 0._r8) then
+                     phys_columns(col_index)%area   = forcing_area
+                     phys_columns(col_index)%weight = forcing_area
+                  end if
                end if
                !scm physics only has 1 global column
                phys_columns(col_index)%global_col_num = 1
@@ -424,7 +432,7 @@ CONTAINS
                     grid_map(3, index) = int(gcol, iMap)
                     if (single_column) then
                        grid_map_scm(3, index) = closelonidx
-                       grid_map_scm_iop(3, index) = closeioplonidx
+                       grid_map_scm_iop(3, index) = forcing_lonidx
                     end if
                   end if ! else entry remains 0
                else
@@ -434,7 +442,7 @@ CONTAINS
                      grid_map(3, index) = int(gcol, iMap)
                      if (single_column) then
                         grid_map_scm(3, index) = closelonidx
-                        grid_map_scm_iop(3, index) = closeioplonidx
+                        grid_map_scm_iop(3, index) = forcing_lonidx
                      end if
                   end if ! else entry remains 0
                   ! lat
@@ -443,7 +451,7 @@ CONTAINS
                      grid_map(4, index) = gcol
                      if (single_column) then
                         grid_map_scm(4, index) = closelatidx
-                        grid_map_scm_iop(4, index) = closeioplatidx
+                        grid_map_scm_iop(4, index) = forcing_latidx
                      end if
                   end if ! else entry remains 0
                end if

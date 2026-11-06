@@ -901,7 +901,7 @@ contains
     use pio,              only: var_desc_t, pio_inq_varndims, pio_inq_vardimid, &
                                 pio_inq_dimlen, PIO_MAX_VAR_DIMS
     use cam_pio_utils,    only: cam_pio_find_var
-    use scamMod,          only: iop_ncol, scm_model_ncol
+    use scamMod,          only: forcing_ncol, scm_model_ncol
     use cam_grid_support, only: cam_grid_is_unstructured
 
     type(file_desc_t), intent(inout) :: ncid
@@ -930,16 +930,16 @@ contains
        nhoriz = len1*len2
     end if
 
-    if (nhoriz == iop_ncol) then
+    if (nhoriz == forcing_ncol) then
        gname = 'physgrid_scm_iop'
     else if (nhoriz == scm_model_ncol) then
        gname = 'physgrid_scm'
     else
        if (masterproc) then
           write(iulog,*) sub, trim(varname), ' (', trim(dimname1), '): file columns = ', nhoriz, &
-               ', IOP grid columns = ', iop_ncol, ', model grid columns = ', scm_model_ncol
+               ', forcing grid columns = ', forcing_ncol, ', model grid columns = ', scm_model_ncol
        end if
-       call endrun(sub//trim(varname)//' is on neither the IOP grid nor the model grid')
+       call endrun(sub//trim(varname)//' is on neither the forcing grid nor the model grid')
     end if
 
   end function scm_read_gridname

@@ -453,7 +453,7 @@ end subroutine phys_grid_readnl
     use mpi,              only: MPI_REAL8, MPI_MAX
     use shr_mem_mod,      only: shr_mem_getusage
     use shr_scam_mod,     only: shr_scam_GetCloseLatLon
-    use scamMod,          only: closeioplonidx, closeioplatidx, single_column
+    use scamMod,          only: forcing_lonidx, forcing_latidx, single_column
     use pmgrid,           only: plev
     use dycore,           only: dycore_is
     use dyn_grid,         only: get_block_bounds_d, &
@@ -1147,13 +1147,13 @@ end subroutine phys_grid_readnl
         if ((i <= ncols) .and. (gcols(i) > 0)) then
           if (unstructured) then
             grid_map(3, p) = gcols(i)
-            if (single_column) grid_map_scm(3, p) = closeioplonidx
+            if (single_column) grid_map_scm(3, p) = forcing_lonidx
           else
               grid_map(3, p) = get_lon_p(lcid, i)
               grid_map(4, p) = get_lat_p(lcid, i)
               if (single_column) then
-                 grid_map_scm(3, p) = closeioplonidx
-                 grid_map_scm(4, p) = closeioplatidx
+                 grid_map_scm(3, p) = forcing_lonidx
+                 grid_map_scm(4, p) = forcing_latidx
               end if
           end if
         else

@@ -21,7 +21,7 @@ contains
 
 subroutine read_namelist(nlfilename, single_column, scmlat, scmlon)
 
-   use cam_initfiles,       only: cam_initfiles_readnl
+   use cam_initfiles,       only: cam_initfiles_readnl, ncdata, bnd_topo
    use constituents,        only: cnst_readnl
 
    use phys_grid,           only: phys_grid_readnl
@@ -31,7 +31,7 @@ subroutine read_namelist(nlfilename, single_column, scmlat, scmlon)
    use radiation,           only: radiation_readnl
    use carma_flags_mod,     only: carma_readnl
    use co2_cycle,           only: co2_cycle_readnl
-   use scamMod,             only: scam_readnl
+   use scamMod,             only: scam_readnl, scm_set_forcing_column
 
    use spmd_utils,          only: spmd_utils_readnl
    use cam_history,         only: history_readnl
@@ -196,6 +196,7 @@ subroutine read_namelist(nlfilename, single_column, scmlat, scmlon)
    call analytic_ic_readnl(nlfilename)
    call rate_diags_readnl(nlfilename)
    call scam_readnl(nlfilename, single_column, scmlat, scmlon)
+   if (single_column) call scm_set_forcing_column(ncdata, bnd_topo)
    call nudging_readnl(nlfilename)
 #if ( defined SIMPLE )
    call frierson_readnl(nlfilename)

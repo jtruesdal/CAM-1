@@ -10,6 +10,7 @@ module getinterpnetcdfdata
   use cam_abortutils, only: endrun
   use pmgrid,         only: plev
   use cam_logfile,    only: iulog
+  use shr_kind_mod,   only: r8_mod => shr_kind_r8
 
   implicit none
   private
@@ -17,6 +18,11 @@ module getinterpnetcdfdata
 ! Public Methods:
 !
   public getinterpncdata
+
+  ! The IOP column for the current file and position, found once rather than
+  ! for every field read (the search reads the file's whole lat/lon arrays).
+  integer,       save :: cache_ncid = -1, cache_latidx = -1, cache_lonidx = -1
+  real(r8_mod),  save :: cache_lat = -999._r8_mod, cache_lon = -999._r8_mod
 
 contains
 
@@ -79,7 +85,14 @@ subroutine getinterpncdata( NCID, camlat, camlon, TimeIdx, &
 
 !     -------  code ---------
 
-   call shr_scam_GetCloseLatLon(ncid,camlat,camlon,closelat,closelon,latidx,lonidx)
+   if (ncid /= cache_ncid .or. camlat /= cache_lat .or. camlon /= cache_lon) then
+      call shr_scam_GetCloseLatLon(ncid,camlat,camlon,closelat,closelon,cache_latidx,cache_lonidx)
+      cache_ncid = ncid
+      cache_lat  = camlat
+      cache_lon  = camlon
+   end if
+   latidx = cache_latidx
+   lonidx = cache_lonidx
 
 !
 ! Check mode: double or single precision
