@@ -346,10 +346,14 @@ CONTAINS
                   phys_columns(col_index)%lon_deg = forcing_lon_deg
                   phys_columns(col_index)%lat_rad = forcing_lat_deg * (PI / 180.0_r8)
                   phys_columns(col_index)%lon_rad = forcing_lon_deg * (PI / 180.0_r8)
-                  if (forcing_area > 0._r8) then
-                     phys_columns(col_index)%area   = forcing_area
-                     phys_columns(col_index)%weight = forcing_area
+                  if (forcing_area <= 0._r8) then
+                     ! The model grid's area would be wrong by the ratio of the grid
+                     ! resolutions (e.g. 100x for ne3 vs ne30): stop rather than use it.
+                     call endrun(subname//'SCAM container grid: no area for the forcing-grid '// &
+                          'column (area_d in ncdata, or area in radians^2)')
                   end if
+                  phys_columns(col_index)%area   = forcing_area
+                  phys_columns(col_index)%weight = forcing_area
                end if
                !scm physics only has 1 global column
                phys_columns(col_index)%global_col_num = 1

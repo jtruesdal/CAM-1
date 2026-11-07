@@ -1841,6 +1841,8 @@ subroutine scm_set_forcing_column(ncdata, bnd_topo)
       write(iulog,*) sub//': forcing grid columns, column index = ', forcing_ncol, forcing_lonidx, &
            ' (', trim(fname), ')'
       write(iulog,*) sub//': distance IOP column to forcing-grid column (deg) = ', d_both
+      write(iulog,*) sub//': forcing-grid column area (sr) = ', forcing_area, &
+           ' (negative: not found; used only without IOP column geometry on a container grid)'
       if (scm_cambfb_mode .and. d_both > 1.e-6_r8) then
          write(iulog,*) sub//': WARNING: in BFB mode the IOP column is not a forcing-grid column;'
          write(iulog,*) sub//': WARNING: the run cannot reproduce the column of the run that wrote the IOP file'
@@ -1854,10 +1856,15 @@ contains
       logical, intent(out) :: found
       character(len=8), parameter :: latnames(2) = (/ 'lat     ', 'lat_d   ' /)
       character(len=8), parameter :: lonnames(2) = (/ 'lon     ', 'lon_d   ' /)
+      ! column areas that go with each coordinate pair (initial files write area_d
+      ! for the GLL points; a variable named area must be in radians^2/steradians)
+      character(len=8), parameter :: areanames(2) = (/ 'area    ', 'area_d  ' /)
+      character(len=64) :: units
       integer :: k, latid, lonid, nd, latdim, londim, nlat, nlon, i, ilat, ilon, areaid
       integer :: dimids(NF90_MAX_VAR_DIMS)
       real(r8), allocatable :: lat(:), lon(:)
       real(r8) :: d, dmin, aval(1)
+      real(r8), parameter :: pi_local = 3.14159265358979323846_r8
 
       found = .false.
       do k = 1, 2
@@ -1892,11 +1899,16 @@ contains
             forcing_ncol = nlat
             forcing_lat_deg = lat(forcing_lonidx)
             forcing_lon_deg = lon(forcing_lonidx)
-            if (nf90_inq_varid(fid, 'area', areaid) == NF90_NOERR) then
+            if (nf90_inq_varid(fid, trim(areanames(k)), areaid) == NF90_NOERR) then
                ierr = nf90_inquire_variable(fid, areaid, ndims=nd, dimids=dimids)
-               if (nd == 1 .and. dimids(1) == latdim) then
+               units = ' '
+               if (nf90_get_att(fid, areaid, 'units', units) /= NF90_NOERR) units = ' '
+               ! reject areas in other units (e.g. a topography file's area in m)
+               if (nd == 1 .and. dimids(1) == latdim .and. (len_trim(units) == 0 .or. &
+                    index(units, 'rad') > 0 .or. index(units, 'sr') > 0)) then
                   ierr = nf90_get_var(fid, areaid, aval, start=(/forcing_lonidx/), count=(/1/))
-                  if (ierr == NF90_NOERR) forcing_area = aval(1)
+                  if (ierr == NF90_NOERR .and. aval(1) > 0._r8 .and. aval(1) < 4._r8*pi_local) &
+                       forcing_area = aval(1)
                end if
             end if
          else
