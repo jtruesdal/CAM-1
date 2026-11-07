@@ -8,8 +8,5 @@
 # SCAM doesn't have restart functionality yet.
 ./xmlchange REST_OPTION=never
 
-# Note that clm cannot use initial conditions with SCAM -so will only use specified phenology
-# Only change if CLM_FORCE_COLDSTART exists.
-if [ `./xmlquery --value CLM_FORCE_COLDSTART 2>&1 | grep -c 'ERROR'` -eq 0  ]; then
-./xmlchange CLM_FORCE_COLDSTART='on'
-fi
+# CLM starts from its initial conditions (warm start), interpolated to the column,
+# as in the 3-D run; SCAM no longer forces a CLM cold start.
