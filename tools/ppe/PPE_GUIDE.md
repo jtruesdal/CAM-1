@@ -550,6 +550,67 @@ python3 $PP/ppe_spinup.py $PR/m0000                   # spin-up table + plot
 | `src/control/history_scam.F90` | Which fields CAMIOP writes, and on which tape |
 | `cime_config/SystemTests/sct.py` | The `SCT` system test (3D → CAMIOP → SCAM BFB) |
 
+## Appendix E: SCAM workflow on the container (compassdev 8b7007882 and later)
+
+Applies to `compassdev` from `8b7007882` on (branch `scam_container`). Validated by `SCT` tests
+`sctc03`–`sctc05` (nudged ne30 Manus column, BFB with the 3D run), by `aux_cam`'s
+`SCT_D_Ln7.ne3_ne3_mg37.QPC5` (identical to the `cam6_4_207` baseline apart from three new CAMIOP fields),
+and by ARM97 observed-IOP runs (container BFB with classic full-grid SCAM).
+
+### Setting up a case
+
+1. **Create SCAM cases at the forcing resolution**, i.e. the resolution of the 3D run that wrote the IOP
+   file: e.g. `--res ne30_ne30_mg17` with `-scam camfrc` in `CAM_CONFIG_OPTS`, or an `FSCAM…` compset.
+   CAM's `buildcpp` then runs the SE dynamics on the small `ne3np4` "container" grid and passes
+   `-scam_iop_hgrid ne30np4` to `configure`, so every namelist default, mesh and surface input is ne30's.
+   Nothing is set by hand.
+   - `-scam_full_grid` in `CAM_CONFIG_OPTS` gives classic SCAM on the full grid.
+   - An explicit `-scam_iop_hgrid <grid>` is still honoured.
+   - Hand-built ne3 container cases are obsolete.
+2. **The IOP file can be any set of columns**: one column, a subset, a whole grid, or an observed IOP
+   (ARM97…). SCAM picks the IOP column nearest the requested point, and separately the nearest column of
+   the forcing grid (from `ncdata` coordinates) for every other forcing-grid input (`ncdata`, `bnd_topo`,
+   nudging…). `atm.log` reports both (`scm_set_forcing_column:` lines) and the distance between them; for
+   CAMIOP runs it is 0. In BFB mode a non-zero distance gives a warning, as does a CAMIOP file whose
+   `ne`/`np` attributes differ from the forcing grid.
+3. **CAMIOP files carry the exact column geometry** (`scm_clat`, `scm_clon`, `scm_area`). Without it
+   (older CAMIOP files, observed IOPs), a container run takes latitude, longitude and area from the forcing
+   grid's initial file (`area_d`), and stops with a clear message if the file has no usable area.
+4. **CLM starts warm** (its initial file interpolated to the column): `scam_mandatory` no longer forces a
+   cold start. Set `CLM_FORCE_COLDSTART=on` explicitly for a cold start.
+5. **`PTS_DOMAINFILE` is still required** (the grid default provides it for ne30) until the coupler's
+   mesh-only single-column mode replaces it.
+
+### Running
+
+6. **A SCAM run must be shorter than its CAMIOP file**: SCAM reads the next step's forcing during each step,
+   so the 3D run must write at least one more time record than the SCAM run's length.
+7. **Input stash** (F2000climo cycle-year-2000 emissions): append
+   `/glade/campaign/cgd/amp/jet/scam_stash/f2000_cyc2000/user_nl_cam.stash` to `user_nl_cam` (SCAM and the
+   3D CAMIOP run). Physics initialization 116 s -> 31 s, bit-for-bit. Valid only for that emissions setup
+   (window 1999-12..2001-01). Made with workbench `scripts/stash_tsubset.py`.
+8. **Short runs and history:** the nudging testmod sets `nhtfrq = 0,1` (tape 1 monthly); runs shorter than
+   a month write no history unless `nhtfrq` is changed.
+9. **Timers:** `cam_init_*`, `pi_*` (physics-initialization groups), `scm_readiopdata1/2`,
+   `scm_setfield1/2`. Use `TIMER_LEVEL=10`; read with `profile_tree.py` (workbench
+   `scripts/scam_container/`).
+
+### Testing and production
+
+10. **SCAM-vs-3D bit-for-bit is a debug-build property** (`SCT_D` tests). SCAM and the 3D run are different
+    executables; optimized builds round differently (vectorization, FMA over 1 vs many columns), so
+    production SCAM drifts slightly from its 3D run. PPE results are judged against the default member
+    `m0000` and the `pertlim` noise floor, all members using the same optimized executable.
+11. **Memory and speed** (optimized, nudged ne30 Manus): about **0.7 GB** per SCAM run (classic ne30 SCAM:
+    8 GB); physics initialization 31 s with the stash; about 0.5 s per step (IOP read 0.34 s, nudging-target
+    reads ~0.17 s, physics ~0.01 s). Memory no longer limits packing: `max_parallel` can go up to the cores
+    per node, and the per-member memory request can drop accordingly.
+12. **Still open:** `fincl3` with `Nudge_*`/`Target_*` fails in the **3D** run's history (keep it out of 3D
+    CAMIOP runs); global every-step CAMIOP output is ~0.5 GB/step at ne30, so production needs column-only
+    IOP files (SCAM's reader accepts them; an extraction script is still to be written).
+
+The same text is kept in the workbench as `docs/scam_workflow.md`.
+
 ## Appendix D: References
 
 *Citations are from memory; check the details (year, journal, pages) before using them in a publication.*
