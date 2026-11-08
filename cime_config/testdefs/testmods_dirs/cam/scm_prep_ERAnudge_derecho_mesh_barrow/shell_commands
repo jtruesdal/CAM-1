@@ -1,0 +1,4 @@
+# SCAM column (barrow ne30 column center) without a domain file: PTS_DOMAINFILE=mesh makes the
+# coupler take the column and its land/ocean fractions from the meshes (CMEPS scam_mesh_column)
+./xmlchange PTS_LAT=71.184778184951568,PTS_LON=204.92322624340073
+./xmlchange PTS_DOMAINFILE=mesh
