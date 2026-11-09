@@ -2228,6 +2228,8 @@ end function dyn_field_exists
 
 subroutine read_dyn_field_2d(fieldname, fh, dimname, buffer)
 
+   use dyn_grid, only: elem
+
    ! Dummy arguments
    character(len=*),  intent(in)    :: fieldname
    type(file_desc_t), intent(inout) :: fh
@@ -2237,7 +2239,7 @@ subroutine read_dyn_field_2d(fieldname, fh, dimname, buffer)
    ! Local variables
    logical                  :: found
    real(r8)                 :: fillvalue
-   integer                  :: ie
+   integer                  :: ie, k, idx
    real(r8)                 :: colbuf2d(npsq,1)
    !----------------------------------------------------------------------------
 
@@ -2249,9 +2251,16 @@ subroutine read_dyn_field_2d(fieldname, fh, dimname, buffer)
       ! one-element buffer.
       call infld(trim(fieldname), fh, dimname, 1, npsq, 1, 1, colbuf2d, &
            found, gridname='SCM', fillvalue=fillvalue)
+      ! Fill only each element's unique GLL points, as a normal read does: the
+      ! callers (read_inidat, set_phis) sum the shared points over the element
+      ! edges afterwards, so a value at every point would be multiplied by the
+      ! number of elements sharing that point.
       if (found) then
          do ie = 1, nelemd
-            buffer(:,ie) = colbuf2d(:,1)
+            do k = 1, elem(ie)%idxP%NumUniquePts
+               idx = (elem(ie)%idxP%ja(k) - 1)*np + elem(ie)%idxP%ia(k)
+               buffer(idx,ie) = colbuf2d(idx,1)
+            end do
          end do
       end if
    else
@@ -2285,6 +2294,8 @@ end subroutine read_dyn_field_2d
 
 subroutine read_dyn_field_3d(fieldname, fh, dimname, buffer)
 
+   use dyn_grid, only: elem
+
    ! Dummy arguments
    character(len=*),  intent(in)    :: fieldname
    type(file_desc_t), intent(inout) :: fh
@@ -2294,7 +2305,7 @@ subroutine read_dyn_field_3d(fieldname, fh, dimname, buffer)
    ! Local variables
    logical                  :: found
    real(r8)                 :: fillvalue
-   integer                  :: ie
+   integer                  :: ie, k, idx
    real(r8)                 :: colbuf3d(npsq,nlev,1)
    !----------------------------------------------------------------------------
 
@@ -2303,9 +2314,13 @@ subroutine read_dyn_field_3d(fieldname, fh, dimname, buffer)
       ! See read_dyn_field_2d.
       call infld(trim(fieldname), fh, dimname, 'lev',  1, npsq, 1, nlev,      &
            1, 1, colbuf3d, found, gridname='SCM', fillvalue=fillvalue)
+      ! Unique GLL points only (see read_dyn_field_2d).
       if (found) then
          do ie = 1, nelemd
-            buffer(:,:,ie) = colbuf3d(:,:,1)
+            do k = 1, elem(ie)%idxP%NumUniquePts
+               idx = (elem(ie)%idxP%ja(k) - 1)*np + elem(ie)%idxP%ia(k)
+               buffer(idx,:,ie) = colbuf3d(idx,:,1)
+            end do
          end do
       end if
    else
