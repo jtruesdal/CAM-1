@@ -1,0 +1,3 @@
+# SCAM column (barrow ne30 column center) with the domain file (PTS_DOMAINFILE from the grid), for
+# comparison with scm_prep_ERAnudge_derecho_mesh_barrow
+./xmlchange PTS_LAT=71.184778184951568,PTS_LON=204.92322624340073
