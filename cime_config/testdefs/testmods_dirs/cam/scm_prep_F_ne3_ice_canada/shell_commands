@@ -1,0 +1,2 @@
+# SCAM column: land_ocean_seaice_Canadian_Arctic (ne3 grid point nearest 73.689, 246.301)
+./xmlchange PTS_LAT=73.689,PTS_LON=246.301

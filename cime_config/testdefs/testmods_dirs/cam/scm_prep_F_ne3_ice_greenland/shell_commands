@@ -1,0 +1,2 @@
+# SCAM column: land_ocean_seaice_E_Greenland (ne3 grid point nearest 73.689, 336.301)
+./xmlchange PTS_LAT=73.689,PTS_LON=336.301

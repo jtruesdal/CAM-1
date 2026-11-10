@@ -1,0 +1,2 @@
+# SCAM column: all_land_Sahara (ne3 grid point nearest 22.579, 15.0)
+./xmlchange PTS_LAT=22.579,PTS_LON=15.0

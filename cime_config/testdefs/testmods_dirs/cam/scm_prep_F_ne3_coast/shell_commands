@@ -1,0 +1,2 @@
+# SCAM column: land_ocean_Gulf_of_Guinea (ne3 grid point nearest 6.663, 6.708)
+./xmlchange PTS_LAT=6.663,PTS_LON=6.708

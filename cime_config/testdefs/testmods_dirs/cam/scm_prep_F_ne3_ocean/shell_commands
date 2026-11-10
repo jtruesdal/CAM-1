@@ -1,0 +1,2 @@
+# SCAM column: all_ocean, South Pacific (ne3 grid point nearest -20.3, 211.7; not a symmetric point, so the nearest is unique)
+./xmlchange PTS_LAT=-20.3,PTS_LON=211.7
