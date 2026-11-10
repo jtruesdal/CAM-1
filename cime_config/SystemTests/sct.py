@@ -11,6 +11,7 @@ only have round off differences.
 """
 
 import os
+import re
 from CIME.SystemTests.system_tests_compare_two import SystemTestsCompareTwo
 from CIME.XML.standard_module_setup import *
 from CIME.SystemTests.test_utils.user_nl_utils import append_to_user_nl_files
@@ -48,6 +49,24 @@ class SCT(SystemTestsCompareTwo):
                 f.write("{!r} {!r}\n".format(pts_lat, pts_lon))
             self._case.set_value("PTS_LAT", -999.)
             self._case.set_value("PTS_LON", -999.)
+
+    def _case_one_ncdata(self):
+        """The initial file case one actually uses (from its generated atm_in), or None.
+
+        The SCAM case must start from the same state as the 3-D run.  Its namelist
+        defaults can differ from the 3-D case's (single-column configurations have
+        their own ncdata defaults at some resolutions, e.g. ne3np4), so the test
+        passes the 3-D case's file explicitly instead of relying on the defaults.
+        """
+        atm_in = os.path.join(self._case1.get_value("CASEROOT"), "CaseDocs", "atm_in")
+        if not os.path.isfile(atm_in):
+            return None
+        with open(atm_in) as f:
+            for line in f:
+                m = re.match(r"\s*ncdata\s*=\s*['\"]([^'\"]+)['\"]", line)
+                if m:
+                    return m.group(1)
+        return None
 
     def _scm_column_file(self):
         return os.path.join(self._case1.get_value("CASEROOT"), "sct_scm_column")
@@ -92,6 +111,11 @@ class SCT(SystemTestsCompareTwo):
             self._case.set_value("PTS_LAT",lat)
             self._case.set_value("PTS_LON",lon)
             append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "scale_dry_air_mass     = 0.0D0")
+            ncdata = self._case_one_ncdata()
+            if ncdata:
+                append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "ncdata = '"+ncdata+"'")
+            else:
+                logger.warning("SCT: case one's ncdata not found; the SCAM case uses its own default")
         else:
             append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "ncdata = '../"+case_name+".cam.i."+RUN_STARTDATE+"-00000.nc'")
             lat, lon = self._scm_column(-20.0, 140.0)
