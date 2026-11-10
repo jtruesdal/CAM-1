@@ -111,11 +111,6 @@ class SCT(SystemTestsCompareTwo):
             self._case.set_value("PTS_LAT",lat)
             self._case.set_value("PTS_LON",lon)
             append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "scale_dry_air_mass     = 0.0D0")
-            ncdata = self._case_one_ncdata()
-            if ncdata:
-                append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "ncdata = '"+ncdata+"'")
-            else:
-                logger.warning("SCT: case one's ncdata not found; the SCAM case uses its own default")
         else:
             append_to_user_nl_files(caseroot = self._get_caseroot(), component = "cam", contents = "ncdata = '../"+case_name+".cam.i."+RUN_STARTDATE+"-00000.nc'")
             lat, lon = self._scm_column(-20.0, 140.0)
@@ -145,6 +140,27 @@ class SCT(SystemTestsCompareTwo):
             append_testlog(comments, self._orig_caseroot)
 
     def _case_two_custom_prerun_action(self):
+        self._set_case_two_ncdata()
+        self._case_two_derecho_select()
+
+    def _set_case_two_ncdata(self):
+        """SE: the SCAM case starts from case one's initial file.  Done just before case two
+        runs: case one has run by then (its atm_in exists), and case two's namelists are
+        generated afterwards, at the start of its run."""
+        if self._case1.get_value("CAM_DYCORE") != "se":
+            return
+        ncdata = self._case_one_ncdata()
+        if not ncdata:
+            logger.warning("SCT: case one's ncdata not found; the SCAM case uses its own default")
+            return
+        caseroot = self._case2.get_value("CASEROOT")
+        line = "ncdata = '"+ncdata+"'"
+        user_nl = os.path.join(caseroot, "user_nl_cam")
+        if os.path.isfile(user_nl) and line in open(user_nl).read():
+            return
+        append_to_user_nl_files(caseroot = caseroot, component = "cam", contents = line)
+
+    def _case_two_derecho_select(self):
         """ On NCAR derecho system the mpibind script causes ESMF in the second job to think it is using 128 tasks when it should only use 1
         changing the env variable PBS_SELECT solves this issue
         """
