@@ -1118,9 +1118,10 @@
     <machines>
       <machine name="izumi" compiler="gnu" category="aux_cam"/>
       <machine name="izumi" compiler="gnu" category="test_scam"/>
+      <machine name="izumi" compiler="nag" category="test_scam"/>
     </machines>
     <options>
-      <option name="comment" >Spectral Element SCAM BFB test with CAM w GNU</option>
+      <option name="comment" >Spectral Element SCAM BFB test with CAM w GNU (and NAG in test_scam)</option>
       <option name="wallclock">00:30:00</option>
     </options>
   </test>
@@ -1208,6 +1209,95 @@
     </machines>
     <options>
       <option name="wallclock">01:00:00</option>
+    </options>
+  </test>
+
+  <test compset="F2000climo_SROF" grid="ne3_ne3_mg37" name="SCT_D_Ln9" testmods="cam/scm_prep_F_ne3_ocean">
+    <machines>
+      <machine name="derecho" compiler="intel" category="test_scam"/>
+      <machine name="izumi" compiler="gnu" category="test_scam"/>
+    </machines>
+    <options>
+      <option name="wallclock">00:30:00</option>
+      <option name="comment" >SCAM BFB test with CAM, F2000climo at ne3, all ocean column (no domain file)</option>
+    </options>
+  </test>
+  <test compset="F2000climo_SROF" grid="ne3_ne3_mg37" name="SCT_D_Ln9" testmods="cam/scm_prep_F_ne3_land">
+    <machines>
+      <machine name="derecho" compiler="intel" category="test_scam"/>
+      <machine name="izumi" compiler="gnu" category="test_scam"/>
+    </machines>
+    <options>
+      <option name="wallclock">00:30:00</option>
+      <option name="comment" >SCAM BFB test with CAM, F2000climo at ne3, all land column (no domain file)</option>
+    </options>
+  </test>
+  <test compset="F2000climo_SROF" grid="ne3_ne3_mg37" name="SCT_D_Ln9" testmods="cam/scm_prep_F_ne3_coast">
+    <machines>
+      <machine name="derecho" compiler="intel" category="test_scam"/>
+      <machine name="izumi" compiler="gnu" category="test_scam"/>
+    </machines>
+    <options>
+      <option name="wallclock">00:30:00</option>
+      <option name="comment" >SCAM BFB test with CAM, F2000climo at ne3, land and ocean column (no domain file)</option>
+    </options>
+  </test>
+  <test compset="F2000climo_SROF" grid="ne3_ne3_mg37" name="SCT_D_Ln9" testmods="cam/scm_prep_F_ne3_ice_greenland">
+    <machines>
+      <machine name="derecho" compiler="intel" category="test_scam"/>
+      <machine name="izumi" compiler="gnu" category="test_scam"/>
+    </machines>
+    <options>
+      <option name="wallclock">00:30:00</option>
+      <option name="comment" >SCAM BFB test with CAM, F2000climo at ne3, land, ocean and sea ice column (no domain file)</option>
+    </options>
+  </test>
+  <test compset="F2000climo_SROF" grid="ne3_ne3_mg37" name="SCT_D_Ln9" testmods="cam/scm_prep_F_ne3_ice_canada">
+    <machines>
+      <machine name="derecho" compiler="intel" category="aux_cam"/>
+      <machine name="izumi" compiler="gnu" category="aux_cam"/>
+      <machine name="derecho" compiler="intel" category="test_scam"/>
+      <machine name="izumi" compiler="gnu" category="test_scam"/>
+    </machines>
+    <options>
+      <option name="wallclock">00:30:00</option>
+      <option name="comment" >SCAM BFB test with CAM, F2000climo at ne3, land, ocean and sea ice column (no domain file)</option>
+    </options>
+  </test>
+  <test compset="F2000climo_SROF" grid="ne30_ne30_mg17" name="SCT_D_Ln9" testmods="cam/scm_prep_ERAnudge_derecho_mesh_manus">
+    <machines>
+      <machine name="derecho" compiler="intel" category="test_scam"/>
+    </machines>
+    <options>
+      <option name="wallclock">01:00:00</option>
+      <option name="comment" >SCAM BFB test with CAM, ne30 column on the ne3 container, ERA5 nudging: ocean (Manus)</option>
+    </options>
+  </test>
+  <test compset="F2000climo_SROF" grid="ne30_ne30_mg17" name="SCT_D_Ln9" testmods="cam/scm_prep_ERAnudge_derecho_mesh_darwin">
+    <machines>
+      <machine name="derecho" compiler="intel" category="test_scam"/>
+    </machines>
+    <options>
+      <option name="wallclock">01:00:00</option>
+      <option name="comment" >SCAM BFB test with CAM, ne30 column on the ne3 container, ERA5 nudging: land and ocean (Darwin)</option>
+    </options>
+  </test>
+  <test compset="F2000climo_SROF" grid="ne30_ne30_mg17" name="SCT_D_Ln9" testmods="cam/scm_prep_ERAnudge_derecho_mesh_barrow">
+    <machines>
+      <machine name="derecho" compiler="intel" category="test_scam"/>
+    </machines>
+    <options>
+      <option name="wallclock">01:00:00</option>
+      <option name="comment" >SCAM BFB test with CAM, ne30 column on the ne3 container, ERA5 nudging: land, ocean and sea ice (Barrow)</option>
+    </options>
+  </test>
+  <test compset="F2000climo_SROF" grid="ne30_ne30_mg17" name="SCT_D_Ln9" testmods="cam/scm_prep_ERAnudge_derecho_mesh_sgp">
+    <machines>
+      <machine name="derecho" compiler="intel" category="test_scam"/>
+    </machines>
+    <options>
+      <option name="wallclock">01:00:00</option>
+      <option name="comment" >SCAM BFB test with CAM, ne30 column on the ne3 container, ERA5 nudging: land (ARM SGP)</option>
     </options>
   </test>
 
