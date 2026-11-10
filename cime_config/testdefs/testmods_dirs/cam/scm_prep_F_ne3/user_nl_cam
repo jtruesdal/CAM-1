@@ -3,3 +3,4 @@ MFILT    = 10000,10000
 nhtfrq   = 0,1
 inithist_all = .true.
 write_nstep0 = .true.
+ncdata = '$DIN_LOC_ROOT/atm/cam/inic/se/CESM2.F2000climo.ne3np4.cam.i.0003-06-01-00000.nc'
