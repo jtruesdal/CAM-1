@@ -212,9 +212,13 @@ subroutine apply_SC_forcing(elem,hvcoord,tl,n,t_before_advance)
 
     ! Evaluate the differences in state information from observed
     !  (done for diganostic purposes only)
+    !  q is compared as the model holds it, Qdp/dp3d: the CAMIOP file's q is written
+    !  that way (advect_tend), and q_update*dp3d/dp3d can differ from q_update in
+    !  the last bit, which made QDIFF nonzero although the state is identical.
     do k = 1, nlev
        tdiff_dyn(k) = t_update(k)   - tobs(k)
-       qdiff_dyn(k) = q_update(k,1) - qobs(k)
+       qdiff_dyn(k) = elem(ie_scm)%state%Qdp(i_scm,j_scm,k,1,tl_fqdp) / &
+                      elem(ie_scm)%state%dp3d(i_scm,j_scm,k,tl_f) - qobs(k)
     end do
 
     ! Add various diganostic outfld calls
