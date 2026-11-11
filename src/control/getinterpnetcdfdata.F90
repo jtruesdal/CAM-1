@@ -19,10 +19,16 @@ module getinterpnetcdfdata
 !
   public getinterpncdata
 
-  ! The IOP column for the current file and position, found once rather than
-  ! for every field read (the search reads the file's whole lat/lon arrays).
-  integer,       save :: cache_ncid = -1, cache_latidx = -1, cache_lonidx = -1
-  real(r8_mod),  save :: cache_lat = -999._r8_mod, cache_lon = -999._r8_mod
+  ! The column for each field read, found once per field rather than at every
+  ! read (the search reads the coordinate arrays).  Keyed by file, field and
+  ! position; the column depends on the field's own horizontal dimensions
+  ! (e.g. ncol_d or ncol on a CAMIOP file; lon/lat on an observed IOP).
+  integer, parameter :: ncache = 256
+  integer,           save :: ncached = 0
+  integer,           save :: cache_ncid(ncache), cache_latidx(ncache), cache_lonidx(ncache)
+  integer,           save :: cache_nh(ncache)
+  real(r8_mod),      save :: cache_lat(ncache), cache_lon(ncache)
+  character(len=64), save :: cache_var(ncache), cache_latdim(ncache), cache_hdims(2,ncache)
 
 contains
 
@@ -36,7 +42,7 @@ subroutine getinterpncdata( NCID, camlat, camlon, TimeIdx, &
 !     result in outData, and the error status inx STATUS
 
    use shr_kind_mod, only: r8 => shr_kind_r8, i8 => shr_kind_i8
-   use shr_scam_mod, only: shr_scam_GetCloseLatLon
+   use scam_column_mod, only: scam_find_column, scam_horiz_dims
    use netcdf
    implicit none
 !-----------------------------------------------------------------------
@@ -82,17 +88,39 @@ subroutine getinterpncdata( NCID, camlat, camlon, TimeIdx, &
    character   dim_name*( 256 )
    real(r8)        missing_val
    logical     usable_var
+   integer     ic, nh
+   logical     hfound
+   character(len=64) :: hdims(2), latdim
 
 !     -------  code ---------
 
-   if (ncid /= cache_ncid .or. camlat /= cache_lat .or. camlon /= cache_lon) then
-      call shr_scam_GetCloseLatLon(ncid,camlat,camlon,closelat,closelon,cache_latidx,cache_lonidx)
-      cache_ncid = ncid
-      cache_lat  = camlat
-      cache_lon  = camlon
+   ! the column for this field (see the cache above)
+   ic = 0
+   do i = 1, ncached
+      if (cache_ncid(i) == ncid .and. cache_lat(i) == camlat .and. cache_lon(i) == camlon &
+           .and. trim(cache_var(i)) == trim(varName)) then
+         ic = i
+         exit
+      end if
+   end do
+   if (ic == 0) then
+      latidx = 1; lonidx = 1; latdim = ' '; nh = 0
+      call scam_horiz_dims(ncid, varName, hdims, nh, hfound)
+      if (hfound) then
+         call scam_find_column(ncid, hdims(1:nh), camlat, camlon, closelat, closelon, &
+              latidx, lonidx, lat_dimname=latdim)
+      end if
+      ncached = min(ncached + 1, ncache)
+      ic = ncached
+      cache_ncid(ic) = ncid; cache_lat(ic) = camlat; cache_lon(ic) = camlon
+      cache_var(ic) = varName; cache_latidx(ic) = latidx; cache_lonidx(ic) = lonidx
+      cache_latdim(ic) = latdim; cache_nh(ic) = nh; cache_hdims(:,ic) = hdims
    end if
-   latidx = cache_latidx
-   lonidx = cache_lonidx
+   latidx = cache_latidx(ic)
+   lonidx = cache_lonidx(ic)
+   nh     = cache_nh(ic)
+   hdims  = cache_hdims(:,ic)
+   latdim = cache_latdim(ic)
 
 !
 ! Check mode: double or single precision
@@ -140,14 +168,15 @@ subroutine getinterpncdata( NCID, camlat, camlon, TimeIdx, &
       usable_var = .false.
       STATUS = NF90_INQUIRE_DIMENSION( NCID, var_dimIDs( i ), dim_name )
 
-      if ( dim_name .EQ. 'lat' ) then
+      ! horizontal dimensions of this field: the latitude dimension of a structured
+      ! grid gets latIdx, any other (longitude, or the column of an unstructured grid)
+      ! gets lonIdx
+      if ( nh == 2 .and. trim(dim_name) == trim(latdim) ) then
          start( i ) =  latIdx
          count( i ) = 1           ! Extract a single value
          dims_set = dims_set + 1
          usable_var = .true.
-      endif
-
-      if ( dim_name .EQ. 'lon' .or. dim_name .EQ. 'ncol' .or. dim_name .EQ. 'ncol_d' ) then
+      else if ( nh >= 1 .and. any(hdims(1:nh) == dim_name) ) then
          start( i ) = lonIdx
          count( i ) = 1           ! Extract a single value
          dims_set = dims_set + 1

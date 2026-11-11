@@ -14,7 +14,7 @@ module ncdio_atm
        pio_inq_dimid, pio_max_var_dims, io_desc_t, pio_setframe
   use shr_kind_mod,   only: r8 => shr_kind_r8
   use shr_sys_mod,    only: shr_sys_flush      ! Standardized system subroutines
-  use shr_scam_mod,   only: shr_scam_getCloseLatLon  ! Standardized system subroutines
+  use scam_column_mod, only: scam_find_column
   use spmd_utils,     only: masterproc
   use cam_abortutils, only: endrun
   use scamMod,        only: scmlat,scmlon,single_column
@@ -396,7 +396,7 @@ contains
           strt(1) = dim1b
           strt(2) = dim2b
           cnt = arraydimsize
-          call shr_scam_getCloseLatLon(ncid,scmlat,scmlon,closelat,closelon,latidx,lonidx)
+          call scam_find_column(ncid, (/'lon','lat'/), scmlat, scmlon, closelat, closelon, latidx, lonidx)
           if (trim(field_dnames(1)) == 'lon') then
             strt(1) = lonidx
           else
@@ -829,7 +829,7 @@ contains
           strt(2) = dim2b
           strt(3) = dim3b
           cnt = arraydimsize
-          call shr_scam_getCloseLatLon(ncid,scmlat,scmlon,closelat,closelon,latidx,lonidx)
+          call scam_find_column(ncid, (/'lon','lat'/), scmlat, scmlon, closelat, closelon, latidx, lonidx)
           if (trim(field_dnames(1)) == 'lon') then
             strt(1) = lonidx
           else

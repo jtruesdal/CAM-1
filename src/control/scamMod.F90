@@ -27,7 +27,7 @@ use netcdf,         only: NF90_NOERR,NF90_CLOSE,NF90_GET_VAR,NF90_INQUIRE_DIMENS
                           NF90_INQ_DIMID, NF90_INQ_VARID, NF90_NOWRITE, NF90_OPEN, &
                           NF90_GET_ATT,NF90_GLOBAL,NF90_INQUIRE_ATTRIBUTE, &
                           NF90_INQUIRE_VARIABLE, NF90_MAX_VAR_DIMS, nf90_get_var
-use shr_scam_mod,   only: shr_scam_getCloseLatLon
+use scam_column_mod, only: scam_find_column, scam_horiz_dims
 use cam_logfile,    only: iulog
 use cam_abortutils, only: endrun
 use time_manager,   only: get_curr_date, get_nstep,is_first_step,get_start_date,timemgr_time_inc
@@ -76,9 +76,14 @@ real(r8), public ::  iop_area                   ! exact column area from the IOP
 
 
 integer, parameter :: num_switches = 20
-! cache for get_start_count: IOP column indices for the current file and position
-integer,  save :: gsc_ncid = -1, gsc_latidx = -1, gsc_lonidx = -1
-real(r8), save :: gsc_lat = -999._r8, gsc_lon = -999._r8
+! cache for get_start_count: the column for each IOP field (file, variable, position);
+! it depends on the field's own horizontal dimensions (ncol_d or ncol on a CAMIOP file)
+integer, parameter :: gsc_n = 256
+integer,           save :: gsc_ncached = 0
+integer,           save :: gsc_ncid(gsc_n), gsc_varid(gsc_n), gsc_latidx(gsc_n), gsc_lonidx(gsc_n)
+integer,           save :: gsc_nh(gsc_n)
+real(r8),          save :: gsc_lat(gsc_n), gsc_lon(gsc_n)
+character(len=64), save :: gsc_latdim(gsc_n), gsc_hdims(2,gsc_n)
 integer, parameter :: max_path_len = 256
 
 logical, public ::  single_column         ! Using IOP file or not
@@ -294,6 +299,9 @@ subroutine scam_readnl(nlfile,single_column_in,scmlat_in,scmlon_in)
   integer  :: ncid
   integer  :: iatt
   logical  :: adv
+  character(len=64) :: iop_hdims(2)   ! horizontal dims of the IOP temperature field
+  integer  :: iop_nhdims
+  logical  :: iop_hfound
 
 ! this list should include any variable that you might want to include in the namelist
   namelist /scam_nl/ iopfile, scm_iop_lhflxshflxTg, scm_iop_Tg, scm_relaxation, &
@@ -361,7 +369,13 @@ subroutine scam_readnl(nlfile,single_column_in,scmlat_in,scmlon_in)
      scm_req_lon = scmlon
      ! If we are not forcing the lat and lon from the namelist use the closest lat and lon that is found in the IOP file.
      if (.not.scm_force_latlon) then
-        call shr_scam_GetCloseLatLon( ncid, scmlat, scmlon, closeioplat, closeioplon, closeioplatidx, closeioplonidx )
+        ! the IOP column on the grid of the IOP's temperature field (T in observed
+        ! IOPs, t in CAMIOP files): (lon, lat) for observed IOPs, ncol_d for CAMIOP
+        call scam_horiz_dims(ncid, 'T', iop_hdims, iop_nhdims, iop_hfound)
+        if (.not. iop_hfound) call scam_horiz_dims(ncid, 't', iop_hdims, iop_nhdims, iop_hfound)
+        if (.not. iop_hfound) call endrun('SCAM_READNL: no horizontal coordinates for T/t in the IOP file')
+        call scam_find_column(ncid, iop_hdims(1:iop_nhdims), scmlat, scmlon, closeioplat, closeioplon, &
+             closeioplatidx, closeioplonidx)
         write(iulog,*) 'SCAM_READNL: using closest IOP column to lat/lon specified in drv_in'
         write(iulog,*) '   requested lat,lon    =',scmlat,', ',scmlon
         write(iulog,*) '   closest IOP lat,lon  =',closeioplat,', ',closeioplon
@@ -1551,17 +1565,40 @@ subroutine get_start_count (ncid    ,varid  ,scmlat, scmlon, timeidx, start    ,
   integer            :: var_dimIDs( NF90_MAX_VAR_DIMS )
   real(r8)           :: closelat,closelon
   integer            :: latidx,lonidx,status,i
+  integer            :: ic, nh
+  logical            :: hfound
+  character(len=cl)  :: vname
+  character(len=64)  :: hdims(2), latdim
 !-----------------------------------------------------------------------
 
-   ! The column is found once per open IOP file and position, not for every field.
-   if (ncid /= gsc_ncid .or. scmlat /= gsc_lat .or. scmlon /= gsc_lon) then
-      call shr_scam_GetCloseLatLon(ncid,scmlat,scmlon,closelat,closelon,gsc_latidx,gsc_lonidx)
-      gsc_ncid = ncid
-      gsc_lat  = scmlat
-      gsc_lon  = scmlon
+   ! The column for this field, found once per file, field and position.
+   ic = 0
+   do i = 1, gsc_ncached
+      if (gsc_ncid(i) == ncid .and. gsc_varid(i) == varid .and. &
+          gsc_lat(i) == scmlat .and. gsc_lon(i) == scmlon) then
+         ic = i
+         exit
+      end if
+   end do
+   if (ic == 0) then
+      latidx = 1; lonidx = 1; latdim = ' '; nh = 0
+      status = nf90_inquire_variable(ncid, varid, name=vname)
+      call scam_horiz_dims(ncid, vname, hdims, nh, hfound)
+      if (hfound) then
+         call scam_find_column(ncid, hdims(1:nh), scmlat, scmlon, closelat, closelon, &
+              latidx, lonidx, lat_dimname=latdim)
+      end if
+      gsc_ncached = min(gsc_ncached + 1, gsc_n)
+      ic = gsc_ncached
+      gsc_ncid(ic) = ncid; gsc_varid(ic) = varid; gsc_lat(ic) = scmlat; gsc_lon(ic) = scmlon
+      gsc_latidx(ic) = latidx; gsc_lonidx(ic) = lonidx; gsc_nh(ic) = nh
+      gsc_hdims(:,ic) = hdims; gsc_latdim(ic) = latdim
    end if
-   latidx = gsc_latidx
-   lonidx = gsc_lonidx
+   latidx = gsc_latidx(ic)
+   lonidx = gsc_lonidx(ic)
+   nh     = gsc_nh(ic)
+   hdims  = gsc_hdims(:,ic)
+   latdim = gsc_latdim(ic)
 
    STATUS = NF90_INQUIRE_VARIABLE( NCID, varID, ndims=var_ndims )
 !
@@ -1586,14 +1623,14 @@ subroutine get_start_count (ncid    ,varid  ,scmlat, scmlon, timeidx, start    ,
       usable_var = .false.
       STATUS = NF90_INQUIRE_DIMENSION( NCID, var_dimIDs( i ), dim_name )
 
-      if ( trim(dim_name) == 'lat' ) then
+      ! horizontal dimensions: the latitude dimension of a structured grid gets
+      ! latIdx, any other (longitude, or an unstructured column) gets lonIdx
+      if ( nh == 2 .and. trim(dim_name) == trim(latdim) ) then
          start( i ) =  latIdx
          count( i ) = 1           ! Extract a single value
          dims_set = dims_set + 1
          usable_var = .true.
-      endif
-
-      if ( trim(dim_name) == 'lon' .or. trim(dim_name) == 'ncol' .or. trim(dim_name) == 'ncol_d' ) then
+      else if ( nh >= 1 .and. any(hdims(1:nh) == dim_name) ) then
          start( i ) = lonIdx
          count( i ) = 1           ! Extract a single value
          dims_set = dims_set + 1

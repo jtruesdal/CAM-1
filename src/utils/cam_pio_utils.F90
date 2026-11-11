@@ -109,7 +109,7 @@ contains
   !    single-column usage and limits for use by the cam_pio_get_var interfaces
   ! This still only works for lat/lon dycores
   logical function use_scam_limits(File, start, kount, dimnames)
-    use shr_scam_mod,   only: shr_scam_getCloseLatLon
+    use scam_column_mod, only: scam_find_column
     use scamMod,        only: scmlat, scmlon, single_column
     use cam_abortutils, only: endrun
 
@@ -128,7 +128,7 @@ contains
 
     use_scam_limits = single_column
     if (use_scam_limits) then
-      call shr_scam_getCloseLatLon(File, scmlat, scmlon, closelat, closelon,  &
+      call scam_find_column(File, (/'lon','lat'/), scmlat, scmlon, closelat, closelon, &
            latidx, lonidx)
       if (present(dimnames)) then
         if (trim(dimnames(1)) == 'lon') then

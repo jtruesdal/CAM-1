@@ -452,7 +452,6 @@ end subroutine phys_grid_readnl
     !-----------------------------------------------------------------------
     use mpi,              only: MPI_REAL8, MPI_MAX
     use shr_mem_mod,      only: shr_mem_getusage
-    use shr_scam_mod,     only: shr_scam_GetCloseLatLon
     use scamMod,          only: forcing_lonidx, forcing_latidx, single_column
     use pmgrid,           only: plev
     use dycore,           only: dycore_is

@@ -671,7 +671,7 @@ contains
 
     use mo_constants, only : r2d
     use scamMod, only : latiop,loniop,scmlat,scmlon,scm_cambfb_mode
-    use shr_scam_mod  , only: shr_scam_getCloseLatLon  ! Standardized system subroutines
+    use scam_column_mod, only: scam_find_column
     use cam_initfiles, only: initial_file_get_id
     use dycore, only : dycore_is
     use phys_grid,     only : get_rlat_all_p, get_rlon_all_p, get_ncols_p
@@ -730,8 +730,7 @@ contains
     if (single_column) then
        if (scm_cambfb_mode) then
           piofile => initial_file_get_id()
-!         call shr_scam_getCloseLatLon(piofile%fh,scmlat,scmlon,closelat,closelon,latidx,lonidx)
-          call shr_scam_getCloseLatLon(piofile,scmlat,scmlon,closelat,closelon,latidx,lonidx)
+          call scam_find_column(piofile, (/'lon','lat'/), scmlat, scmlon, closelat, closelon, latidx, lonidx)
           ploniop=size(loniop)
           platiop=size(latiop)
        else
